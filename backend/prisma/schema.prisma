@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Camera {
+  id        Int     @id @default(autoincrement())
+  name      String  @unique
+  rtspUrl   String  @unique
+  description String?
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cameras")
+}
+
+model StreamLog {
+  id        Int     @id @default(autoincrement())
+  cameraId  Int
+  status    String  // "success", "failed", "offline"
+  message   String?
+  createdAt DateTime @default(now())
+
+  @@map("stream_logs")
+}

@@ -1,0 +1,17 @@
+- [x] Crear estructura base del proyecto MERN
+- [x] Configurar frontend con React + Vite
+- [x] Configurar backend con Node.js + Express
+- [x] Implementar Prisma ORM con SQLite
+- [x] Crear componentes React para visor de cámaras
+- [x] Crear rutas API para CRUD de cámaras
+- [x] Documentación README
+- [x] Instalar dependencias
+- [x] Ejecutar migraciones de BD
+- [x] Configurar credenciales de cámaras (192.168.8.210)
+- [ ] Iniciar servidor backend
+- [ ] Iniciar servidor frontend
+- [ ] Implementar streaming RTSP con FFmpeg
+- [ ] Convertir RTSP a HLS/WebRTC
+- [ ] Agregar autenticación de usuarios
+- [ ] Mejorar UI con más funcionalidades
+- [ ] Deploy en producción
