@@ -5,7 +5,7 @@ import path from 'path'
 
 const router = express.Router()
 
-// POST /api/media/start/:cameraId - Iniciar streaming + grabación
+// POST /api/media/start/:cameraId - Iniciar grabación continua
 router.post('/start/:cameraId', async (req, res) => {
   try {
     const { cameraId } = req.params
@@ -21,7 +21,7 @@ router.post('/start/:cameraId', async (req, res) => {
     
     res.json({
       success: true,
-      message: `Streaming y grabación iniciados: ${camera.name}`,
+      message: `Grabación continua iniciada: ${camera.name}`,
       ...result
     })
   } catch (error) {
@@ -30,7 +30,32 @@ router.post('/start/:cameraId', async (req, res) => {
   }
 })
 
-// POST /api/media/stop/:cameraId - Detener streaming + grabación
+// POST /api/media/start-hls/:cameraId - Iniciar streaming HLS (fallback)
+router.post('/start-hls/:cameraId', async (req, res) => {
+  try {
+    const { cameraId } = req.params
+    const camera = await req.prisma.camera.findUnique({
+      where: { id: parseInt(cameraId) }
+    })
+
+    if (!camera) {
+      return res.status(404).json({ error: 'Cámara no encontrada' })
+    }
+
+    const result = mediaServerManager.startHLSStream(camera)
+    
+    res.json({
+      success: true,
+      message: `Stream HLS iniciado: ${camera.name}`,
+      ...result
+    })
+  } catch (error) {
+    console.error('Error iniciando HLS:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// POST /api/media/stop/:cameraId - Detener grabación
 router.post('/stop/:cameraId', (req, res) => {
   try {
     const { cameraId } = req.params
@@ -38,10 +63,26 @@ router.post('/stop/:cameraId', (req, res) => {
     
     res.json({
       success: true,
-      message: 'Streaming y grabación detenidos'
+      message: 'Grabación detenida'
     })
   } catch (error) {
     console.error('Error deteniendo cámara:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// POST /api/media/stop-hls/:cameraId - Detener streaming HLS
+router.post('/stop-hls/:cameraId', (req, res) => {
+  try {
+    const { cameraId } = req.params
+    mediaServerManager.stopHLSStream(parseInt(cameraId))
+    
+    res.json({
+      success: true,
+      message: 'Stream HLS detenido'
+    })
+  } catch (error) {
+    console.error('Error deteniendo HLS:', error)
     res.status(500).json({ error: error.message })
   }
 })

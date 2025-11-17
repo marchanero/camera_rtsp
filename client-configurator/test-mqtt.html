@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test MQTT Status</title>
+</head>
+<body>
+    <h1>Test MQTT Status API</h1>
+    <button onclick="testAPI()">Test API</button>
+    <pre id="result"></pre>
+    
+    <script>
+        async function testAPI() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Loading...';
+            
+            try {
+                console.log('Fetching from: http://localhost:3001/api/mqtt/status');
+                const response = await fetch('http://localhost:3001/api/mqtt/status');
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Data received:', data);
+                    resultEl.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    resultEl.textContent = 'Error: ' + response.status + ' ' + response.statusText;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultEl.textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        // Auto test on load
+        window.addEventListener('load', testAPI);
+    </script>
+</body>
+</html>

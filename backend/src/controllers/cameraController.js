@@ -1,4 +1,6 @@
 // Controlador para gestionar cámaras
+import mediaServerManager from '../services/mediaServer.js'
+
 export const getAllCameras = async (req, res) => {
   try {
     const cameras = await req.prisma.camera.findMany({
@@ -45,6 +47,15 @@ export const createCamera = async (req, res) => {
       }
     })
     
+    // 🎯 AUTO-INICIAR GRABACIÓN CONTINUA
+    console.log(`🚀 Auto-iniciando grabación para: ${camera.name}`)
+    try {
+      mediaServerManager.startCamera(camera)
+    } catch (recordError) {
+      console.error('⚠️ Error iniciando grabación automática:', recordError)
+      // No fallar la creación si la grabación falla
+    }
+    
     res.status(201).json(camera)
   } catch (error) {
     console.error('Error al crear cámara:', error)
@@ -83,6 +94,15 @@ export const updateCamera = async (req, res) => {
 export const deleteCamera = async (req, res) => {
   try {
     const { id } = req.params
+    
+    // Detener grabación antes de eliminar
+    console.log(`🛑 Deteniendo grabación de cámara ${id}`)
+    try {
+      mediaServerManager.stopCamera(parseInt(id))
+      mediaServerManager.stopHLSStream(parseInt(id))
+    } catch (stopError) {
+      console.error('⚠️ Error deteniendo servicios:', stopError)
+    }
     
     await req.prisma.camera.delete({
       where: { id: parseInt(id) }

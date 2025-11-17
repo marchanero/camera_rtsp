@@ -1,0 +1,17 @@
+{
+  "name": "rtsp-tests",
+  "version": "1.0.0",
+  "description": "Unit tests for RTSP streaming services",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha *.test.js --timeout 10000",
+    "test:watch": "mocha *.test.js --watch --timeout 10000",
+    "test:coverage": "nyc mocha *.test.js --timeout 10000"
+  },
+  "dependencies": {
+    "chai": "^4.3.7",
+    "sinon": "^15.0.1",
+    "mocha": "^10.2.0",
+    "nyc": "^15.1.0"
+  }
+}

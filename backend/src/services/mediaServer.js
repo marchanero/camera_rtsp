@@ -116,19 +116,50 @@ class MediaServerManager {
   }
 
   /**
-   * Inicia streaming + grabación de una cámara RTSP
+   * Inicia SOLO grabación de una cámara (sin HLS streaming)
+   * Grabación continua sin pérdida de calidad usando codec copy
    */
   startCamera(camera) {
     const streamKey = `camera_${camera.id}`
-    const rtmpUrl = `rtmp://localhost:${config.rtmp.port}/live/${streamKey}`
+    
+    // Verificar si ya está grabando
+    const recordKey = `${streamKey}_recording`
+    if (this.recordingProcesses.has(recordKey)) {
+      console.log(`⚠️ Grabación ya activa para ${camera.name}`)
+      return { streamKey, message: 'Ya está grabando' }
+    }
+
+    console.log(`💾 Iniciando grabación continua: ${camera.name}`)
+    
+    // Solo iniciar grabación (sin HLS)
+    this.startRecording(camera, streamKey)
+
+    return {
+      streamKey,
+      message: 'Grabación iniciada (sin pérdida de calidad)',
+      recording: true
+    }
+  }
+
+  /**
+   * Inicia HLS streaming (solo cuando se requiere visualización HLS)
+   * Usado como fallback si WebRTC no funciona
+   */
+  startHLSStream(camera) {
+    const streamKey = `camera_${camera.id}`
     const hlsDir = path.join(MEDIA_ROOT, 'live', streamKey)
+    
+    // Verificar si ya está streaming HLS
+    if (this.rtspProcesses.has(streamKey)) {
+      console.log(`⚠️ Stream HLS ya activo para ${camera.name}`)
+      return { streamKey, hlsUrl: `http://localhost:${config.http.port}/live/${streamKey}/index.m3u8` }
+    }
     
     // Crear directorio HLS si no existe
     if (!fs.existsSync(hlsDir)) {
       fs.mkdirSync(hlsDir, { recursive: true })
     }
 
-    // 1. RTSP → HLS directamente (para visualización en tiempo real)
     console.log(`🎥 Iniciando stream HLS: ${camera.name}`)
     const hlsOutputPath = path.join(hlsDir, 'index.m3u8')
     
@@ -154,10 +185,9 @@ class MediaServerManager {
     streamProcess.stderr.on('data', (data) => {
       const output = data.toString()
       if (output.includes('frame=')) {
-        // Log cada 100 frames
         const match = output.match(/frame=\s*(\d+)/)
         if (match && parseInt(match[1]) % 100 === 0) {
-          console.log(`📹 ${camera.name}: Frame ${match[1]}`)
+          console.log(`📹 HLS ${camera.name}: Frame ${match[1]}`)
         }
       }
       if (output.includes('Opening') && output.includes('.ts')) {
@@ -176,13 +206,9 @@ class MediaServerManager {
 
     this.rtspProcesses.set(streamKey, streamProcess)
 
-    // 2. RTSP → MP4 (grabación continua)
-    this.startRecording(camera, streamKey)
-
     return {
       streamKey,
-      hlsUrl: `http://localhost:${config.http.port}/live/${streamKey}/index.m3u8`,
-      rtmpUrl: rtmpUrl
+      hlsUrl: `http://localhost:${config.http.port}/live/${streamKey}/index.m3u8`
     }
   }
 
@@ -240,19 +266,11 @@ class MediaServerManager {
   }
 
   /**
-   * Detiene una cámara específica
+   * Detiene grabación de una cámara específica
    */
   stopCamera(cameraId) {
     const streamKey = `camera_${cameraId}`
     
-    // Detener stream
-    const streamProcess = this.rtspProcesses.get(streamKey)
-    if (streamProcess) {
-      streamProcess.kill('SIGTERM')
-      this.rtspProcesses.delete(streamKey)
-      console.log(`🛑 Stream detenido: camera_${cameraId}`)
-    }
-
     // Detener grabación
     const recordKey = `${streamKey}_recording`
     const recordProcess = this.recordingProcesses.get(recordKey)
@@ -260,6 +278,21 @@ class MediaServerManager {
       recordProcess.kill('SIGTERM')
       this.recordingProcesses.delete(recordKey)
       console.log(`🛑 Grabación detenida: camera_${cameraId}`)
+    }
+  }
+
+  /**
+   * Detiene stream HLS de una cámara específica
+   */
+  stopHLSStream(cameraId) {
+    const streamKey = `camera_${cameraId}`
+    
+    // Detener stream HLS
+    const streamProcess = this.rtspProcesses.get(streamKey)
+    if (streamProcess) {
+      streamProcess.kill('SIGTERM')
+      this.rtspProcesses.delete(streamKey)
+      console.log(`🛑 Stream HLS detenido: camera_${cameraId}`)
     }
   }
 

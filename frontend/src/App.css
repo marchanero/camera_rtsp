@@ -1,1 +1,15 @@
-/* App.css - Estilos globales ya están en index.css */
+@import 'tailwindcss/components';
+
+@layer components {
+  .app {
+    @apply flex flex-col h-screen overflow-hidden;
+  }
+
+  header {
+    @apply flex-shrink-0;
+  }
+
+  .app > div:last-child {
+    @apply flex-1 overflow-hidden;
+  }
+}

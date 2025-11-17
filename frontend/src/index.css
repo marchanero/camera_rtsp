@@ -1,127 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  * {
-    @apply m-0 p-0 box-border;
+  html {
+    @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-white font-sans;
   }
-
   body {
-    @apply bg-dark-800 text-white;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    @apply transition-colors duration-300;
   }
 }
 
 @layer components {
-  .app {
-    @apply flex flex-col h-screen overflow-hidden;
+  .card {
+    @apply bg-gray-50 dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 transition-all duration-200 hover:shadow-xl;
+  }
+  
+  .btn-primary {
+    @apply bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
+  }
+  
+  .btn-secondary {
+    @apply bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-colors duration-200;
   }
 
-  .header {
-    @apply bg-gradient-to-br from-purple-500 to-purple-700 p-6 shadow-lg;
-    @apply flex justify-between items-center;
+  .nav-link {
+    @apply px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 relative;
   }
 
-  .header h1 {
-    @apply text-3xl md:text-4xl font-bold flex-1;
+  .nav-link.active {
+    @apply bg-blue-500 text-white shadow-md;
   }
 
-  .header-status {
-    @apply flex items-center gap-4;
+  .nav-link.inactive {
+    @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700;
   }
 
-  .status-badge {
-    @apply px-4 py-2 rounded-full text-sm font-semibold;
-    @apply bg-white/20 backdrop-blur-sm;
-  }
-
-  .status-badge.online {
-    @apply bg-primary/30 text-primary;
-  }
-
-  .status-badge.offline {
-    @apply bg-danger/30 text-danger;
-  }
-
-  .status-badge.checking {
-    @apply bg-warning/30 text-warning;
-  }
-
-  .container {
-    @apply flex flex-1 gap-4 p-4 overflow-hidden;
-  }
-
-  .sidebar {
-    @apply w-64 bg-dark-700 rounded-lg p-4 overflow-y-auto shadow-lg;
-    @apply flex flex-col gap-4;
-  }
-
-  .sidebar-header {
-    @apply flex justify-between items-center gap-2;
-  }
-
-  .sidebar-header h2 {
-    @apply text-lg font-semibold text-purple-400 flex-1;
-  }
-
-  .add-camera-btn {
-    @apply bg-gradient-to-br from-purple-500 to-purple-700 text-white;
-    @apply border-0 rounded-md w-8 h-8 cursor-pointer text-xl;
-    @apply flex items-center justify-center;
-    @apply transition-all duration-200 hover:scale-110 hover:shadow-lg hover:shadow-purple-500/40;
-  }
-
-  .sidebar > p {
-    @apply py-2 text-sm;
-  }
-
-  .status-msg {
-    @apply text-warning p-2 text-sm;
-  }
-
-  .error-msg {
-    @apply text-danger text-sm p-2 bg-danger/10 rounded mb-4;
-  }
-
-  .refresh-btn {
-    @apply w-full py-3 mt-auto;
-    @apply bg-gradient-to-br from-purple-500 to-purple-700 text-white;
-    @apply border-0 rounded-md font-semibold cursor-pointer;
-    @apply transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:shadow-purple-500/40;
-  }
-
-  .viewer {
-    @apply flex-1 bg-dark-700 rounded-lg shadow-lg;
-    @apply flex items-center justify-center overflow-hidden;
-  }
-
-  .placeholder {
-    @apply text-center text-gray-500;
-  }
-
-  .placeholder p {
-    @apply text-xl;
+  .live-indicator {
+    @apply flex items-center gap-2 px-3 py-1 text-white rounded-full text-xs font-semibold animate-pulse;
   }
 }
 
 @layer utilities {
-  @media (max-width: 768px) {
-    .container {
-      @apply flex-col;
-    }
+  .animate-shimmer {
+    animation: shimmer 2s infinite linear;
+  }
 
-    .sidebar {
-      @apply w-full max-h-[200px];
-    }
-
-    .header {
-      @apply flex-col gap-4;
-    }
-
-    .header h1 {
-      @apply text-2xl;
-    }
+  .gradient-text {
+    @apply bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent;
   }
 }
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 

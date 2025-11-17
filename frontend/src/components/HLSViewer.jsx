@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Hls from 'hls.js'
+import ConfirmModal from './ConfirmModal'
+import RecordingControl from './RecordingControl'
 import './CameraViewer.css'
 
 function HLSViewer({ camera }) {
@@ -8,6 +10,7 @@ function HLSViewer({ camera }) {
   const [recordings, setRecordings] = useState([])
   const [error, setError] = useState(null)
   const [streamUrl, setStreamUrl] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, filename: '', cameraId: null })
   
   const videoRef = useRef(null)
   const hlsRef = useRef(null)
@@ -19,7 +22,8 @@ function HLSViewer({ camera }) {
       setStatus('conectando')
       setError(null)
 
-      const response = await fetch(`/api/media/start/${camera.id}`, {
+      // Iniciar stream HLS (la grabación ya debería estar activa automáticamente)
+      const response = await fetch(`/api/media/start-hls/${camera.id}`, {
         method: 'POST'
       })
 
@@ -29,7 +33,7 @@ function HLSViewer({ camera }) {
         throw new Error(data.error || 'Error iniciando stream')
       }
 
-      console.log('✅ Stream iniciado:', data)
+      console.log('✅ Stream HLS iniciado:', data)
 
       // Esperar 8 segundos para que FFmpeg genere segmentos HLS
       setStatus('generando_hls')
@@ -67,12 +71,13 @@ function HLSViewer({ camera }) {
         videoRef.current.src = ''
       }
 
-      const response = await fetch(`/api/media/stop/${camera.id}`, {
+      // Solo detener stream HLS (la grabación sigue activa en background)
+      const response = await fetch(`/api/media/stop-hls/${camera.id}`, {
         method: 'POST'
       })
 
       const data = await response.json()
-      console.log('🛑 Stream detenido:', data)
+      console.log('🛑 Stream HLS detenido:', data)
 
       setIsRecording(false)
       setStreamUrl(null)
@@ -198,10 +203,16 @@ function HLSViewer({ camera }) {
 
   // Eliminar grabación
   const deleteRecording = async (filename) => {
-    if (!confirm(`¿Eliminar ${filename}?`)) return
+    setConfirmDelete({
+      isOpen: true,
+      filename,
+      cameraId: camera.id
+    })
+  }
 
+  const confirmDeleteRecording = async () => {
     try {
-      await fetch(`/api/media/recording/${camera.id}/${filename}`, {
+      await fetch(`/api/media/recording/${confirmDelete.cameraId}/${confirmDelete.filename}`, {
         method: 'DELETE'
       })
       loadRecordings()
@@ -292,14 +303,18 @@ function HLSViewer({ camera }) {
       <div className="viewer-header">
         <h2>{camera.name}</h2>
         <div className="controls">
+          {/* Control de Grabación Separado */}
+          <RecordingControl camera={camera} />
+          
+          {/* Controles de Visualización HLS */}
           {status === 'detenido' && (
             <button className="control-btn" onClick={startStreaming}>
-              ▶️ Iniciar Stream + Grabación
+              ▶️ Iniciar Stream HLS
             </button>
           )}
           {status === 'streaming' && (
             <button className="control-btn" onClick={stopStreaming}>
-              ⏹️ Detener
+              ⏹️ Detener Stream
             </button>
           )}
           <button 
@@ -338,13 +353,16 @@ function HLSViewer({ camera }) {
 
         {status === 'detenido' && (
           <div className="loading">
-            <p>▶️ Presiona "Iniciar Stream + Grabación"</p>
+            <p>▶️ Presiona "Iniciar Stream HLS"</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+              💾 La grabación continua ya está activa en segundo plano
+            </p>
           </div>
         )}
 
         {error && (
           <div className="loading">
-            <p style={{ color: '#ff8787' }}>❌ {error}</p>
+            <p className="text-red-400">❌ {error}</p>
           </div>
         )}
 
@@ -373,44 +391,40 @@ function HLSViewer({ camera }) {
         <div className="info">
           <p><strong>Estado:</strong> {status}</p>
           <p><strong>URL RTSP:</strong> <code>{camera.rtspUrl}</code></p>
-          <p><strong>Grabación:</strong> {isRecording ? '✅ Activa' : '❌ Inactiva'}</p>
+          <p><strong>Grabación:</strong> ✅ Continua (sin pérdida de calidad)</p>
           
-          <hr style={{ margin: '1rem 0', borderColor: '#404040' }} />
+          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded">
+            <p className="text-sm text-green-700 dark:text-green-300">
+              ℹ️ <strong>Modo HLS:</strong> Grabación continua en MP4 sin pérdida + Visualización HLS
+            </p>
+          </div>
           
-          <h3>📼 Grabaciones ({recordings.length})</h3>
-          {recordings.length === 0 && <p style={{ color: '#999' }}>No hay grabaciones</p>}
+          <hr className="my-4 border-gray-300 dark:border-gray-600" />
           
-          <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '0.5rem' }}>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">📼 Grabaciones ({recordings.length})</h3>
+          {recordings.length === 0 && <p className="text-gray-500 dark:text-gray-400">No hay grabaciones</p>}
+          
+          <div className="max-h-[200px] overflow-y-auto mt-2">
             {recordings.map((rec, idx) => (
               <div 
                 key={idx}
-                style={{
-                  padding: '0.5rem',
-                  marginBottom: '0.5rem',
-                  background: '#1a1a1a',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
+                className="p-2 mb-2 bg-gray-100 dark:bg-gray-700 rounded flex justify-between items-center"
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 'bold' }}>{rec.filename}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#999' }}>
+                <div className="flex-1">
+                  <div className="font-bold text-gray-900 dark:text-white">{rec.filename}</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
                     {formatFileSize(rec.size)} - {formatDate(rec.created)}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="flex gap-2">
                   <button 
-                    className="control-btn" 
-                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                    className="control-btn py-1 px-2 text-xs" 
                     onClick={() => downloadRecording(rec.filename)}
                   >
                     ⬇️
                   </button>
                   <button 
-                    className="control-btn" 
-                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                    className="control-btn py-1 px-2 text-xs" 
                     onClick={() => deleteRecording(rec.filename)}
                   >
                     🗑️
@@ -421,6 +435,17 @@ function HLSViewer({ camera }) {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmDelete.isOpen}
+        onClose={() => setConfirmDelete({ isOpen: false, filename: '', cameraId: null })}
+        onConfirm={confirmDeleteRecording}
+        title="Eliminar Grabación"
+        message={`¿Estás seguro que deseas eliminar "${confirmDelete.filename}"? Esta acción no se puede deshacer.`}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        isDanger={true}
+      />
     </div>
   )
 }

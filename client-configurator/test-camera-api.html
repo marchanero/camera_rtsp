@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Camera API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            background: #f0f0f0;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        input, textarea, button {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .output {
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎥 Test Camera API</h1>
+    
+    <div class="section">
+        <h2>Test 1: Crear Cámara</h2>
+        <textarea id="cameraPayload" rows="10">{"name":"Camera Test 1","ip":"192.168.8.210","port":554,"username":"admin","password":"galgo2526","path":"/h264Preview_01_main","protocol":"rtsp"}</textarea>
+        <button onclick="testCreateCamera()">Crear Cámara</button>
+        <div id="createResult" class="output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test 2: Obtener todas las cámaras</h2>
+        <button onclick="testGetCameras()">Obtener Cámaras</button>
+        <div id="getCamerasResult" class="output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test 3: Probar conexión</h2>
+        <input type="number" id="cameraId" placeholder="ID de la cámara" value="5">
+        <button onclick="testConnection()">Probar Conexión</button>
+        <div id="testConnectionResult" class="output"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+
+        async function testCreateCamera() {
+            const resultDiv = document.getElementById('createResult');
+            resultDiv.innerHTML = '⏳ Enviando...';
+            
+            try {
+                const payload = JSON.parse(document.getElementById('cameraPayload').value);
+                console.log('📤 Payload:', payload);
+                
+                const response = await fetch(`${API_URL}/api/rtsp/cameras`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.text();
+                
+                resultDiv.innerHTML = `
+<span class="${response.ok ? 'success' : 'error'}">Status: ${response.status} ${response.statusText}</span>
+
+Response:
+${data}
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+
+        async function testGetCameras() {
+            const resultDiv = document.getElementById('getCamerasResult');
+            resultDiv.innerHTML = '⏳ Cargando...';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/rtsp/cameras`);
+                const data = await response.json();
+                resultDiv.innerHTML = `<span class="success">Cámaras encontradas: ${data.count}</span>
+
+${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+
+        async function testConnection() {
+            const resultDiv = document.getElementById('testConnectionResult');
+            const cameraId = document.getElementById('cameraId').value;
+            
+            if (!cameraId) {
+                resultDiv.innerHTML = '<span class="error">Ingresa un ID de cámara</span>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '⏳ Probando conexión...';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/rtsp/cameras/${cameraId}/test`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                resultDiv.innerHTML = `<span class="${data.success ? 'success' : 'error'}">
+Conexión: ${data.success ? '✅ Exitosa' : '❌ Fallida'}
+</span>
+
+${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Dark Mode</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+</head>
+<body class="bg-white dark:bg-gray-900">
+  <div class="p-8">
+    <h1 class="text-gray-900 dark:text-white text-2xl font-bold mb-4">
+      Test de Dark Mode
+    </h1>
+    <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded">
+      <p class="text-gray-900 dark:text-white">
+        Si ves este texto en blanco, el dark mode funciona.
+      </p>
+    </div>
+    <button 
+      onclick="toggleTheme()" 
+      class="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      Toggle Theme
+    </button>
+    <div class="mt-4 p-4 bg-yellow-100 rounded">
+      <p class="font-mono text-sm">
+        HTML class: <span id="htmlClass"></span>
+      </p>
+    </div>
+  </div>
+  <script>
+    function updateClassDisplay() {
+      document.getElementById('htmlClass').textContent = document.documentElement.className;
+    }
+    
+    function toggleTheme() {
+      const html = document.documentElement;
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        html.classList.add('light');
+      } else {
+        html.classList.remove('light');
+        html.classList.add('dark');
+      }
+      updateClassDisplay();
+    }
+    
+    updateClassDisplay();
+  </script>
+</body>
+</html>

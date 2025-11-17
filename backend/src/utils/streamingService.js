@@ -1,43 +1,34 @@
 import { spawn } from 'child_process'
-import { createServer } from 'http'
-import { WebSocketServer } from 'ws'
 
 class StreamingService {
-  constructor(httpServer) {
+  constructor(httpServer, wss) {
     this.httpServer = httpServer
-    this.wss = new WebSocketServer({ 
-      server: httpServer, 
-      path: '/ws',
-      perMessageDeflate: false
-    })
+    this.wss = wss
     this.streamProcesses = new Map()
     this.clientSubscriptions = new Map()
-
-    this.setupWebSocket()
   }
 
-  setupWebSocket() {
-    this.wss.on('connection', (ws, req) => {
-      console.log('👤 Cliente WebSocket conectado')
+  // Manejar nueva conexión WebSocket (llamado desde index.js)
+  handleConnection(ws, req) {
+    console.log('👤 Cliente WebSocket conectado (legacy)')
 
-      ws.on('message', (message) => {
-        try {
-          const data = JSON.parse(message)
-          this.handleMessage(ws, data)
-        } catch (error) {
-          console.error('Error al procesar mensaje:', error)
-          ws.send(JSON.stringify({ error: 'Mensaje inválido' }))
-        }
-      })
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message)
+        this.handleMessage(ws, data)
+      } catch (error) {
+        console.error('Error al procesar mensaje:', error)
+        ws.send(JSON.stringify({ error: 'Mensaje inválido' }))
+      }
+    })
 
-      ws.on('close', () => {
-        console.log('👤 Cliente WebSocket desconectado')
-        this.clientSubscriptions.delete(ws)
-      })
+    ws.on('close', () => {
+      console.log('👤 Cliente WebSocket desconectado (legacy)')
+      this.clientSubscriptions.delete(ws)
+    })
 
-      ws.on('error', (error) => {
-        console.error('Error WebSocket:', error)
-      })
+    ws.on('error', (error) => {
+      console.error('Error WebSocket:', error)
     })
   }
 
@@ -150,11 +141,12 @@ class StreamingService {
   }
 
   broadcast(message) {
-    this.wss.clients.forEach((client) => {
+    // Broadcast solo a clientes legacy (no WebRTC)
+    for (const [client] of this.clientSubscriptions) {
       if (client.readyState === 1) {
         client.send(JSON.stringify(message))
       }
-    })
+    }
   }
 
   closeAll() {
