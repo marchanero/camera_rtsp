@@ -6,8 +6,13 @@
  * Publica datos de múltiples sensores de forma continua:
  * - Temperatura (°C)
  * - Humedad (%)
+ * - Presión (hPa)
+ * - Ruido (dB)
+ * - Luz (lux)
  * - CO2 (ppm)
- * - EmotiBit (heart_rate, temperature, eda)
+ * - VOC (ppb)
+ * - Gases: NO2, SO2, O3, CO (ppm)
+ * - EmotiBit (heart_rate, temperature, eda, accel, etc.)
  * 
  * Topics: camera_rtsp/sensors/{type}/{sensor_id}
  */
@@ -28,6 +33,7 @@ const SENSORS = [
     location: 'Laboratorio', 
     min: 18, 
     max: 28,
+    unit: '°C',
     interval: 2000 // Cada 2 segundos
   },
   { 
@@ -37,7 +43,38 @@ const SENSORS = [
     location: 'Laboratorio', 
     min: 40, 
     max: 70,
+    unit: '%',
     interval: 2000 // Cada 2 segundos
+  },
+  { 
+    id: 'PRES001', 
+    type: 'presion', 
+    name: 'Sensor Presión Atmosférica', 
+    location: 'Laboratorio', 
+    min: 980, 
+    max: 1030,
+    unit: 'hPa',
+    interval: 5000 // Cada 5 segundos (cambia más lento)
+  },
+  { 
+    id: 'NOISE001', 
+    type: 'ruido', 
+    name: 'Sensor Ruido Ambiental', 
+    location: 'Laboratorio', 
+    min: 30, 
+    max: 80,
+    unit: 'dB',
+    interval: 1000 // Cada 1 segundo (varía rápido)
+  },
+  { 
+    id: 'LIGHT001', 
+    type: 'luz', 
+    name: 'Sensor Luz Ambiental', 
+    location: 'Laboratorio', 
+    min: 100, 
+    max: 1000,
+    unit: 'lux',
+    interval: 3000 // Cada 3 segundos
   },
   { 
     id: 'CO2001', 
@@ -46,7 +83,59 @@ const SENSORS = [
     location: 'Laboratorio', 
     min: 400, 
     max: 1200,
+    unit: 'ppm',
     interval: 2000 // Cada 2 segundos
+  },
+  { 
+    id: 'VOC001', 
+    type: 'voc', 
+    name: 'Sensor VOC (Compuestos Volátiles)', 
+    location: 'Laboratorio', 
+    min: 0, 
+    max: 500,
+    unit: 'ppb',
+    interval: 5000 // Cada 5 segundos
+  },
+  // Sensores de gases
+  { 
+    id: 'NO2001', 
+    type: 'gases/no2', 
+    name: 'Sensor NO2 (Dióxido de Nitrógeno)', 
+    location: 'Exterior', 
+    min: 0, 
+    max: 0.2,
+    unit: 'ppm',
+    interval: 10000 // Cada 10 segundos
+  },
+  { 
+    id: 'SO2001', 
+    type: 'gases/so2', 
+    name: 'Sensor SO2 (Dióxido de Azufre)', 
+    location: 'Exterior', 
+    min: 0, 
+    max: 0.1,
+    unit: 'ppm',
+    interval: 10000 // Cada 10 segundos
+  },
+  { 
+    id: 'O3001', 
+    type: 'gases/o3', 
+    name: 'Sensor O3 (Ozono)', 
+    location: 'Exterior', 
+    min: 0, 
+    max: 0.15,
+    unit: 'ppm',
+    interval: 10000 // Cada 10 segundos
+  },
+  { 
+    id: 'CO001', 
+    type: 'gases/co', 
+    name: 'Sensor CO (Monóxido de Carbono)', 
+    location: 'Laboratorio', 
+    min: 0, 
+    max: 9,
+    unit: 'ppm',
+    interval: 5000 // Cada 5 segundos
   },
   { 
     id: 'EMO001', 
@@ -55,6 +144,7 @@ const SENSORS = [
     location: 'Usuario 1', 
     min: 60, 
     max: 100,
+    unit: 'bpm',
     interval: 40, // EmotiBit real: ~25Hz (40ms) para PPG/EDA
     // Frecuencias reales del EmotiBit:
     // - PPG (Photoplethysmography): 25Hz
@@ -259,7 +349,8 @@ function publishSensorData(sensor) {
         console.log(`  T_body:${v.temperature}°C T_sensor:${v.sensor_temperature}°C`)
         console.log(`  Accel: X:${v.accel_x}g Y:${v.accel_y}g Z:${v.accel_z}g HRV:${v.hrv}ms`)
       } else {
-        const valueStr = `${payload.value}${sensor.type === 'temperature' ? '°C' : sensor.type === 'humidity' ? '%' : 'ppm'}`
+        const unit = sensor.unit || ''
+        const valueStr = `${payload.value}${unit}`
         console.log(`✓ [${new Date().toLocaleTimeString()}] #${messageCount} → ${sensor.name}: ${valueStr}`)
       }
     }

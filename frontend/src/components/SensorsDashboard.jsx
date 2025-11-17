@@ -24,24 +24,43 @@ function SensorsDashboard() {
 
   // Filtrar sensores activos basado en clientes EMQX y datos MQTT recibidos
   useEffect(() => {
-    if (!sensors.length) return
+    // Si hay datos MQTT, mostrar todos los sensores que tienen datos
+    const sensorsFromMQTT = Array.from(sensorData.entries()).map(([sensorId, data]) => ({
+      id: sensorId,
+      name: typeof data.type === 'string' ? data.type : sensorId,
+      sensorId: sensorId,
+      type: typeof data.type === 'string' ? data.type : 'unknown',
+      isActive: true,
+      data: data
+    }))
 
-    const active = sensors.filter(sensor => {
-      // Verificar si hay datos MQTT para este sensor
-      const hasData = sensorData[sensor.sensorId] !== undefined
+    // Combinar con sensores de la BD si existen
+    if (sensors.length > 0) {
+      const combinedSensors = sensors.map(sensor => {
+        const mqttData = Array.from(sensorData.values()).find(
+          data => data.type === sensor.type || sensorData.has(sensor.sensorId)
+        )
+        
+        const hasPublisher = sensorClients.some(client => 
+          client.clientid.includes(sensor.sensorId) || 
+          client.clientid.includes('sensor-publisher') ||
+          client.clientid.includes('stress-test')
+        )
+        
+        return {
+          ...sensor,
+          hasData: !!mqttData,
+          hasPublisher
+        }
+      }).filter(s => s.hasData || s.hasPublisher)
       
-      // Verificar si hay un publisher conectado para este sensor
-      const hasPublisher = sensorClients.some(client => 
-        client.clientid.includes(sensor.sensorId) || 
-        client.clientid.includes('sensor-publisher') ||
-        client.clientid.includes('stress-test')
-      )
-      
-      // Mostrar solo si tiene datos O si hay publisher activo
-      return hasData || hasPublisher
-    })
-
-    setActiveSensors(active)
+      setActiveSensors([...combinedSensors, ...sensorsFromMQTT.filter(
+        mqtt => !combinedSensors.some(s => s.sensorId === mqtt.sensorId)
+      )])
+    } else {
+      // Si no hay sensores en BD, mostrar solo los de MQTT
+      setActiveSensors(sensorsFromMQTT)
+    }
   }, [sensors, sensorData, sensorClients])
 
   const fetchSensors = async () => {
@@ -60,27 +79,51 @@ function SensorsDashboard() {
     }
   }
 
-  const getSensorValue = (sensorId) => {
-    const data = sensorData[sensorId]
-    if (!data) return null
-    return data.data
+  const getSensorValue = (sensor) => {
+    // Primero buscar por sensorId exacto
+    if (sensorData.has(sensor.sensorId)) {
+      return sensorData.get(sensor.sensorId)
+    }
+    
+    // Si tiene data directa (del MQTT), usarla
+    if (sensor.data) {
+      return sensor.data
+    }
+    
+    // Buscar por tipo de sensor
+    const dataByType = Array.from(sensorData.values()).find(
+      data => data.type === sensor.type
+    )
+    
+    return dataByType || null
   }
 
   const getSensorIcon = (type) => {
     const icons = {
       temperature: '🌡️',
       humidity: '💧',
+      presion: '🔽',
+      ruido: '🔊',
+      luz: '💡',
       co2: '🌫️',
+      voc: '💨',
+      'gases/no2': '☁️',
+      'gases/so2': '🏭',
+      'gases/o3': '⚗️',
+      'gases/co': '☢️',
       emotibit: '💓'
     }
     return icons[type] || '📊'
   }
 
-  const formatValue = (sensor, data) => {
-    if (!data) return 'Sin datos'
+  const formatValue = (sensor, sensorData) => {
+    if (!sensorData) return 'Sin datos'
+    
+    // Obtener el valor del sensor
+    const data = sensorData.value || sensorData.data || {}
     
     if (sensor.type === 'emotibit') {
-      const value = data.data || data.value || {}
+      const value = data.data || data.value || data
       
       // Calcular magnitud del acelerómetro si existen los valores
       const accelMagnitude = (value.accel_x !== undefined && value.accel_y !== undefined && value.accel_z !== undefined)
@@ -155,13 +198,18 @@ function SensorsDashboard() {
       )
     }
     
-    return `${data.value || data.data?.value || 'N/A'} ${sensor.unit || ''}`
+    // Para otros tipos de sensores
+    const value = data.value || data
+    return `${value || 'N/A'} ${sensor.unit || ''}`
   }
 
-  const getStatusColor = (sensor, data) => {
-    if (!data) return 'bg-gray-500'
+  const getStatusColor = (sensor, sensorData) => {
+    if (!sensorData) return 'bg-gray-500'
     
-    const age = Date.now() - new Date(data.timestamp).getTime()
+    const timestamp = sensorData.timestamp
+    if (!timestamp) return 'bg-gray-500'
+    
+    const age = Date.now() - new Date(timestamp).getTime()
     if (age > 60000) return 'bg-yellow-500' // Más de 1 minuto
     
     return 'bg-green-500'
@@ -275,7 +323,7 @@ function SensorsDashboard() {
           </div>
         ) : (
           activeSensors.map((sensor) => {
-            const data = getSensorValue(sensor.sensorId)
+            const data = getSensorValue(sensor)
             const statusColor = getStatusColor(sensor, data)
             
             // Verificar si hay un cliente publisher activo para este sensor
@@ -286,7 +334,7 @@ function SensorsDashboard() {
             
             return (
               <div
-                key={sensor.id}
+                key={sensor.id || sensor.sensorId}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-shadow"
               >
                 {/* Header */}
@@ -332,17 +380,19 @@ function SensorsDashboard() {
                       <span>{sensor.location}</span>
                     </div>
                   )}
-                  <div className="flex items-center space-x-2">
-                    <span>🔢</span>
-                    <span>{sensor._count?.events || 0} eventos</span>
-                  </div>
+                  {sensor._count?.events !== undefined && (
+                    <div className="flex items-center space-x-2">
+                      <span>🔢</span>
+                      <span>{sensor._count.events} eventos</span>
+                    </div>
+                  )}
                   {isPublisherActive && (
                     <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
                       <span>📡</span>
                       <span className="font-medium">Publisher conectado</span>
                     </div>
                   )}
-                  {data && (
+                  {data && data.timestamp && (
                     <div className="flex items-center space-x-2 text-xs">
                       <span>🕐</span>
                       <span>{new Date(data.timestamp).toLocaleTimeString()}</span>
@@ -353,11 +403,11 @@ function SensorsDashboard() {
                 {/* Status Badge */}
                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    sensor.isActive 
+                    data 
                       ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400'
                   }`}>
-                    {sensor.isActive ? '✓ Activo' : '⏸ Inactivo'}
+                    {data ? '✓ Activo' : '⏸ Inactivo'}
                   </span>
                 </div>
               </div>
