@@ -104,8 +104,8 @@ function AppContent() {
         </div>
       </header>
       
-      <div className="container flex flex-1 gap-4 p-4 overflow-hidden max-w-7xl mx-auto">
-        <aside className="card w-80 flex flex-col">
+      <div className="flex flex-1 gap-4 p-4 overflow-hidden">
+        <aside className="card w-80 flex flex-col flex-shrink-0">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">Cámaras</h2>
             <button 
@@ -134,11 +134,11 @@ function AppContent() {
           </button>
         </aside>
 
-        <main className="card flex-1 flex items-center justify-center">
+        <main className="card flex-1 flex flex-col overflow-hidden">
           {selectedCamera ? (
             <HLSViewer camera={selectedCamera} />
           ) : (
-            <div className="text-center text-gray-500 dark:text-gray-400">
+            <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
               <p className="text-xl">Selecciona una cámara</p>
             </div>
           )}
