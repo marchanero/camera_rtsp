@@ -36,6 +36,9 @@ export function RecordingProvider({ children }) {
 
   /**
    * Sincroniza el estado de grabación desde el backend
+   * IMPORTANTE: Esta función NO limpia el estado si backend dice false
+   * Solo actualiza si backend confirma que SÍ está grabando
+   * Para limpiar, usar stopRecording explícitamente
    */
   const syncRecordingStatus = useCallback(async (cameraId, cameraName) => {
     try {
@@ -45,25 +48,23 @@ export function RecordingProvider({ children }) {
       console.log(`🔄 Sync status camera ${cameraId}:`, data)
       
       if (data.isRecording) {
-        setRecordings(prev => new Map(prev).set(cameraId, {
-          status: 'recording',
-          cameraName,
-          startedAt: new Date() // No sabemos exactamente cuándo empezó, usamos ahora
-        }))
-        console.log(`✅ Camera ${cameraId} confirmada grabando`)
-      } else {
-        // Solo limpiar si tenemos estado previo de grabación
+        // Solo actualizar si backend confirma grabación activa
         setRecordings(prev => {
-          const hadRecording = prev.has(cameraId)
-          if (hadRecording) {
-            console.log(`⚠️ Camera ${cameraId} ya no está grabando, limpiando estado`)
-            const newMap = new Map(prev)
-            newMap.delete(cameraId)
-            return newMap
+          const existing = prev.get(cameraId)
+          if (!existing) {
+            console.log(`✅ Camera ${cameraId} confirmada grabando (agregando a estado)`)
+            return new Map(prev).set(cameraId, {
+              status: 'recording',
+              cameraName,
+              startedAt: new Date()
+            })
           }
-          return prev // No cambiar si no había estado previo
+          // Ya existe, no cambiar
+          return prev
         })
       }
+      // NO limpiar si isRecording es false - mantener estado local
+      // El usuario debe detener explícitamente con stopRecording
       
       return data.isRecording
     } catch (error) {
@@ -134,17 +135,31 @@ export function RecordingProvider({ children }) {
         throw new Error(data.error || 'Error deteniendo grabación')
       }
 
+      // SOLO AHORA limpiar el estado después de confirmar que backend detuvo
       setRecordings(prev => {
         const next = new Map(prev)
         next.delete(cameraId)
         return next
       })
 
-      console.log(`🛑 Grabación detenida: ${current?.cameraName}`)
+      console.log(`🛑 Grabación detenida y estado limpiado: ${current?.cameraName}`)
       return { success: true, data }
 
     } catch (error) {
       console.error('❌ Error deteniendo grabación:', error)
+      
+      // En caso de error, restaurar estado anterior
+      setRecordings(prev => {
+        const current = prev.get(cameraId)
+        if (current) {
+          return new Map(prev).set(cameraId, {
+            ...current,
+            status: 'recording' // Volver a recording si falló
+          })
+        }
+        return prev
+      })
+      
       return { success: false, error: error.message }
     }
   }, [recordings])

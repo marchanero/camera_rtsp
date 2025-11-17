@@ -104,7 +104,7 @@ const DashboardSummary = () => {
     }
     
     fetchCameras()
-    const interval = setInterval(fetchCameras, 30000) // Verificar cada 30 segundos
+    const interval = setInterval(fetchCameras, 60000) // Verificar cada 60 segundos (reducido para evitar pérdida de estado)
     return () => clearInterval(interval)
   }, [syncRecordingStatus])
 
