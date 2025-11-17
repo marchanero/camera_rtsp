@@ -81,21 +81,40 @@ function SensorsDashboard() {
     
     if (sensor.type === 'emotibit') {
       const value = data.data || data.value || {}
+      
+      // Calcular magnitud del acelerómetro si existen los valores
+      const accelMagnitude = (value.accel_x !== undefined && value.accel_y !== undefined && value.accel_z !== undefined)
+        ? Math.sqrt(value.accel_x**2 + value.accel_y**2 + value.accel_z**2).toFixed(3)
+        : null
+      
       return (
-        <div className="space-y-1">
+        <div className="space-y-2">
+          {/* Heart Rate - Principal */}
           <div className="flex items-center space-x-2">
             <span className="text-3xl font-bold text-red-500 dark:text-red-400">
               {value.heart_rate || '--'}
             </span>
             <span className="text-sm text-gray-500 dark:text-gray-400">bpm</span>
           </div>
+          
+          {/* Temperaturas */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             {value.temperature && (
               <div className="flex items-center space-x-1">
-                <span>🌡️</span>
-                <span>{value.temperature}°C</span>
+                <span>🫀</span>
+                <span className="font-medium">{value.temperature}°C</span>
               </div>
             )}
+            {value.sensor_temperature && (
+              <div className="flex items-center space-x-1">
+                <span>🌡️</span>
+                <span>{value.sensor_temperature}°C</span>
+              </div>
+            )}
+          </div>
+          
+          {/* EDA y HRV */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
             {value.eda && (
               <div className="flex items-center space-x-1">
                 <span>⚡</span>
@@ -108,13 +127,30 @@ function SensorsDashboard() {
                 <span>HRV: {value.hrv}ms</span>
               </div>
             )}
-            {value.ppg !== undefined && (
-              <div className="flex items-center space-x-1">
-                <span>📈</span>
-                <span>PPG: {value.ppg.toFixed(3)}</span>
-              </div>
-            )}
           </div>
+          
+          {/* Acelerómetro */}
+          {accelMagnitude && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Acelerómetro</span>
+                <span className="font-medium">{accelMagnitude}g</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 mt-1 text-xs text-gray-600 dark:text-gray-400">
+                <div>X: {value.accel_x?.toFixed(3) || '--'}</div>
+                <div>Y: {value.accel_y?.toFixed(3) || '--'}</div>
+                <div>Z: {value.accel_z?.toFixed(3) || '--'}</div>
+              </div>
+            </div>
+          )}
+          
+          {/* PPG (opcional, para debugging) */}
+          {value.ppg !== undefined && (
+            <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
+              <span>📈</span>
+              <span>PPG: {value.ppg.toFixed(3)}</span>
+            </div>
+          )}
         </div>
       )
     }
