@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  rfidTagId String?  @unique
+  rfidTag   RFIDTag? @relation(fields: [rfidTagId], references: [id])
+}
+
+model RFIDTag {
+  id        String   @id @default(cuid())
+  tagId     String   @unique
+  timestamp DateTime @default(now())
+  userId    String?  @unique
+  user      User?
+}

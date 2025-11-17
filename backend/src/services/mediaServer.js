@@ -334,6 +334,20 @@ class MediaServerManager {
       mediaServer: this.nms ? 'running' : 'stopped'
     }
   }
+
+  /**
+   * Verifica si una cámara está grabando
+   */
+  isRecording(cameraId) {
+    return this.recordingProcesses.has(`camera_${cameraId}`)
+  }
+
+  /**
+   * Verifica si una cámara está streaming
+   */
+  isStreaming(cameraId) {
+    return this.rtspProcesses.has(`camera_${cameraId}`)
+  }
 }
 
 // Singleton

@@ -36,11 +36,17 @@ model StreamLog {
 
 model Sensor {
   id          Int      @id @default(autoincrement())
-  sensorId    String   @unique // Identificador único del sensor físico
+  sensorId    String   @unique // Identificador único del sensor físico (ej: "EM:01:23:45:67:89")
   name        String
-  type        String   // "temperature", "humidity", "co2", "emotibit"
-  unit        String?  // "°C", "%", "ppm", etc.
+  type        String   // "emotibit", "temperature", "humidity", "co2", "pressure", etc.
+  unit        String?  // "°C", "%", "ppm", "bpm", etc.
   location    String?  // Ubicación física del sensor
+  
+  // MQTT Topic pattern: {escenario}/{tipo}/{deviceId}/{variable}
+  deviceId    String?  // ID del dispositivo físico (ej: "EM:01:23:45:67:89")
+  topicBase   String?  // Base del topic sin variable (ej: "aula1/emotibit/EM:01:23:45:67:89")
+  variables   String   @default("[]") // JSON array de variables del sensor (ej: ["hr", "eda", "ppg", "temperatura"])
+  
   isActive    Boolean  @default(true)
   config      String?  @default("{}") // JSON con configuración específica
   createdAt   DateTime @default(now())
@@ -51,6 +57,9 @@ model Sensor {
   rules       RecordingRule[] @relation("SensorRules")
 
   @@map("sensors")
+  @@index([type])
+  @@index([deviceId])
+  @@index([topicBase])
 }
 
 model SensorEvent {
@@ -123,4 +132,25 @@ model MqttConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("mqtt_config")
+}
+
+// ==================== ESCENARIOS/AULAS ====================
+
+model Scenario {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  
+  // Dispositivos asignados (JSON arrays)
+  cameras     String   @default("[]") // Array de IDs de cámaras
+  sensors     String   @default("[]") // Array de IDs de sensores
+  
+  // Configuración de umbrales por tipo de sensor (JSON)
+  thresholds  String   @default("{}") // { "temperature": { min: 18, max: 26 }, "humidity": { min: 30, max: 70 }, ... }
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("scenarios")
 }

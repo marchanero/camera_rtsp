@@ -10,6 +10,8 @@ import streamRoutes from './routes/stream.js'
 import mediaRoutes from './routes/media.js'
 import webrtcRoutes, { webrtcService } from './routes/webrtc.js'
 import mqttRoutes from './routes/mqtt.js'
+import scenarioRoutes from './routes/scenarios.js'
+import sensorRoutes from './routes/sensors.js'
 import StreamingService from './utils/streamingService.js'
 import mediaServerManager from './services/mediaServer.js'
 import mqttService from './services/mqttService.js'
@@ -219,6 +221,8 @@ app.use('/api/stream', streamRoutes)
 app.use('/api/media', mediaRoutes)
 app.use('/api/webrtc', webrtcRoutes)
 app.use('/api/mqtt', mqttRoutes)
+app.use('/api/scenarios', scenarioRoutes)
+app.use('/api/sensors', sensorRoutes)
 
 // Ruta de health check
 app.get('/health', (req, res) => {

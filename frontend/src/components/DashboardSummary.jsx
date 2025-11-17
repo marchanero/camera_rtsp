@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRecording } from '../contexts/RecordingContext'
 import { useMQTT } from '../contexts/MQTTContext'
+import { useScenario } from '../contexts/ScenarioContext'
 import api from '../services/api'
 import RecordingControlGlobal from './RecordingControlGlobal'
 import SyncStatus from './SyncStatus'
@@ -38,6 +39,13 @@ const DashboardSummary = () => {
     isConnected: mqttConnected,
     error: mqttError 
   } = useMQTT()
+
+  const { 
+    scenarios, 
+    activeScenario, 
+    setActiveScenario,
+    loading: scenariosLoading 
+  } = useScenario()
 
   // Verificar estado de una cámara
   const checkCameraStatus = async (cameraId) => {
@@ -184,6 +192,64 @@ const DashboardSummary = () => {
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Vista general del sistema de cámaras y sensores
           </p>
+        </div>
+      </div>
+
+      {/* Selector de Escenario */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 flex-1">
+            <div className="bg-purple-100 dark:bg-purple-900/30 rounded-lg p-3">
+              <span className="text-3xl">🎭</span>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Escenario Activo
+              </label>
+              <select
+                value={activeScenario?.id || ''}
+                onChange={(e) => {
+                  const scenarioId = parseInt(e.target.value)
+                  const scenario = scenarios.find(s => s.id === scenarioId)
+                  setActiveScenario(scenario || null)
+                }}
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                disabled={scenariosLoading}
+              >
+                <option value="">Sin escenario (mostrar todo)</option>
+                {scenarios.map(scenario => (
+                  <option key={scenario.id} value={scenario.id}>
+                    {scenario.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          {/* Info del escenario activo */}
+          {activeScenario && (
+            <div className="ml-6 flex items-center gap-4 text-sm">
+              <div className="text-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {activeScenario.cameras?.length || 0}
+                </div>
+                <div className="text-gray-600 dark:text-gray-400">Cámaras</div>
+              </div>
+              <div className="text-center px-4 py-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {activeScenario.sensors?.length || 0}
+                </div>
+                <div className="text-gray-600 dark:text-gray-400">Sensores</div>
+              </div>
+              {activeScenario.description && (
+                <div className="max-w-xs">
+                  <p className="text-gray-600 dark:text-gray-400 text-xs">
+                    {activeScenario.description}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

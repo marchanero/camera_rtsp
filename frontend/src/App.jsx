@@ -7,10 +7,13 @@ import ConfirmModal from './components/ConfirmModal'
 import SensorsDashboard from './components/SensorsDashboard'
 import RulesManager from './components/RulesManager'
 import DashboardSummary from './components/DashboardSummary'
+import ScenarioManager from './components/ScenarioManager'
+import SensorManager from './components/SensorManager'
 import api from './services/api'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { RecordingProvider, useRecording } from './contexts/RecordingContext'
 import { MQTTProvider } from './contexts/MQTTContext'
+import { ScenarioProvider } from './contexts/ScenarioContext'
 
 function AppContent() {
   const [cameras, setCameras] = useState([])
@@ -27,6 +30,10 @@ function AppContent() {
   // Recuperar tab activo del localStorage
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('activeTab') || 'dashboard'
+  })
+  // Subtab para la sección de configuración
+  const [configSubTab, setConfigSubTab] = useState(() => {
+    return localStorage.getItem('configSubTab') || 'scenarios'
   })
   const { theme, toggleTheme } = useTheme()
   const { isRecording, activeRecordingsCount, startRecording, stopRecording } = useRecording()
@@ -62,6 +69,11 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab)
   }, [activeTab])
+
+  // Persistir subtab de configuración en localStorage
+  useEffect(() => {
+    localStorage.setItem('configSubTab', configSubTab)
+  }, [configSubTab])
 
   // Obtener listado de cámaras
   useEffect(() => {
@@ -191,6 +203,16 @@ function AppContent() {
             >
               ⚙️ Reglas
             </button>
+            <button
+              onClick={() => setActiveTab('config')}
+              className={`px-6 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'config'
+                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              🏫 Configuración
+            </button>
           </div>
         </div>
       </header>
@@ -261,6 +283,167 @@ function AppContent() {
             <RulesManager />
           </div>
         )}
+
+        {/* Configuración - montado solo cuando se visita */}
+        {activeTab === 'config' && (
+          <div className="max-w-7xl mx-auto p-6">
+            {/* Header de Configuración */}
+            <div className="mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                ⚙️ Configuración del Sistema
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Gestiona escenarios, sensores y cámaras del sistema
+              </p>
+            </div>
+
+            {/* Tabs de Configuración */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg mb-6">
+              <div className="flex border-b border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setConfigSubTab('scenarios')}
+                  className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
+                    configSubTab === 'scenarios'
+                      ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">🎭</span>
+                    <span>Escenarios</span>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setConfigSubTab('sensors')}
+                  className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
+                    configSubTab === 'sensors'
+                      ? 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400 bg-green-50 dark:bg-green-900/20'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">📡</span>
+                    <span>Sensores</span>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setConfigSubTab('cameras')}
+                  className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
+                    configSubTab === 'cameras'
+                      ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400 bg-purple-50 dark:bg-purple-900/20'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl">📹</span>
+                    <span>Cámaras</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido según subtab activo */}
+            <div className="mt-6">
+              {configSubTab === 'scenarios' && <ScenarioManager />}
+              {configSubTab === 'sensors' && <SensorManager />}
+              {configSubTab === 'cameras' && (
+                <div className="space-y-6">
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <div className="flex justify-between items-center mb-6">
+                      <div>
+                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                          📹 Gestión de Cámaras
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Administra las cámaras RTSP del sistema
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+                      >
+                        ➕ Nueva Cámara
+                      </button>
+                    </div>
+                    
+                    {/* Lista de cámaras en grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {cameras.map(camera => (
+                        <div
+                          key={camera.id}
+                          className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 border-2 transition-all cursor-pointer ${
+                            selectedCamera?.id === camera.id
+                              ? 'border-blue-500 dark:border-blue-400'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                          onClick={() => setSelectedCamera(camera)}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl">📹</span>
+                              <div>
+                                <h4 className="font-bold text-gray-900 dark:text-white">
+                                  {camera.name}
+                                </h4>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  camera.isActive
+                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                                }`}>
+                                  {camera.isActive ? 'Activa' : 'Inactiva'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {camera.description && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                              {camera.description}
+                            </p>
+                          )}
+                          
+                          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-2 rounded font-mono truncate mb-3">
+                            {camera.rtspUrl}
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCamera(camera)
+                                setActiveTab('cameras')
+                              }}
+                              className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
+                            >
+                              👁️ Ver Stream
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteRequest(camera.id, camera.name)
+                              }}
+                              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {cameras.length === 0 && (
+                        <div className="col-span-full text-center py-12 text-gray-500 dark:text-gray-400">
+                          No hay cámaras registradas. Agrega una nueva para comenzar.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <CameraModal
@@ -288,7 +471,9 @@ function App() {
     <ThemeProvider>
       <RecordingProvider>
         <MQTTProvider>
-          <AppContent />
+          <ScenarioProvider>
+            <AppContent />
+          </ScenarioProvider>
         </MQTTProvider>
       </RecordingProvider>
     </ThemeProvider>

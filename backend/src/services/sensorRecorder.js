@@ -9,15 +9,19 @@ class SensorRecorder {
 
   /**
    * Inicia la grabación de datos de sensores
+   * @param {number} cameraId - ID de la cámara
+   * @param {string} cameraName - Nombre de la cámara
+   * @param {number|null} scenarioId - ID del escenario (opcional)
    */
-  startRecording(cameraId, cameraName) {
+  startRecording(cameraId, cameraName, scenarioId = null) {
     if (this.activeRecordings.has(cameraId)) {
       console.log(`⚠️ Ya hay una grabación de sensores activa para cámara ${cameraId}`)
       return this.activeRecordings.get(cameraId)
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `sensors_camera_${cameraId}_${timestamp}.jsonl`
+    const scenarioPrefix = scenarioId ? `scenario_${scenarioId}_` : ''
+    const filename = `${scenarioPrefix}sensors_camera_${cameraId}_${timestamp}.jsonl`
     const sensorDir = path.join(this.recordingsDir, `camera_${cameraId}`)
     
     // Crear directorio si no existe
@@ -31,6 +35,7 @@ class SensorRecorder {
     const recording = {
       cameraId,
       cameraName,
+      scenarioId,
       filename,
       filepath,
       stream,
@@ -40,12 +45,14 @@ class SensorRecorder {
 
     this.activeRecordings.set(cameraId, recording)
     
-    console.log(`🎬 Grabación de sensores iniciada: ${cameraName} -> ${filename}`)
+    const scenarioInfo = scenarioId ? ` (Escenario ${scenarioId})` : ''
+    console.log(`🎬 Grabación de sensores iniciada: ${cameraName}${scenarioInfo} -> ${filename}`)
     
     return {
       success: true,
       filename,
-      startTime: recording.startTime
+      startTime: recording.startTime,
+      scenarioId
     }
   }
 
@@ -96,7 +103,8 @@ class SensorRecorder {
         
         this.activeRecordings.delete(cameraId)
         
-        console.log(`🛑 Grabación de sensores detenida: ${recording.cameraName}`)
+        const scenarioInfo = recording.scenarioId ? ` (Escenario ${recording.scenarioId})` : ''
+        console.log(`🛑 Grabación de sensores detenida: ${recording.cameraName}${scenarioInfo}`)
         console.log(`   Registros: ${recording.recordCount}, Duración: ${duration}s`)
         
         resolve({
@@ -105,14 +113,30 @@ class SensorRecorder {
           recordCount: recording.recordCount,
           duration,
           startTime: recording.startTime,
-          endTime
+          endTime,
+          scenarioId: recording.scenarioId
         })
       })
     })
   }
 
   /**
+   * Verifica si hay una grabación activa para una cámara
+   */
+  isRecording(cameraId) {
+    return this.activeRecordings.has(cameraId)
+  }
+
+  /**
+   * Obtiene información de la grabación activa
+   */
+  getActiveRecording(cameraId) {
+    return this.activeRecordings.get(cameraId) || null
+  }
+
+  /**
    * Obtiene grabaciones de sensores de una cámara
+   * Ahora incluye información del escenario si existe en el nombre del archivo
    */
   getRecordings(cameraId) {
     const sensorDir = path.join(this.recordingsDir, `camera_${cameraId}`)
@@ -122,10 +146,14 @@ class SensorRecorder {
     }
 
     const files = fs.readdirSync(sensorDir)
-      .filter(file => file.startsWith('sensors_') && file.endsWith('.jsonl'))
+      .filter(file => file.endsWith('.jsonl'))
       .map(file => {
         const filepath = path.join(sensorDir, file)
         const stats = fs.statSync(filepath)
+        
+        // Extraer scenarioId del nombre del archivo si existe
+        const scenarioMatch = file.match(/scenario_(\d+)_/)
+        const scenarioId = scenarioMatch ? parseInt(scenarioMatch[1]) : null
         
         // Contar líneas del archivo
         const content = fs.readFileSync(filepath, 'utf-8')
@@ -136,6 +164,7 @@ class SensorRecorder {
           path: filepath,
           size: stats.size,
           recordCount,
+          scenarioId,
           created: stats.birthtime,
           modified: stats.mtime
         }
@@ -183,13 +212,6 @@ class SensorRecorder {
   }
 
   /**
-   * Verifica si hay una grabación activa
-   */
-  isRecording(cameraId) {
-    return this.activeRecordings.has(cameraId)
-  }
-
-  /**
    * Obtiene estado de la grabación activa
    */
   getRecordingStatus(cameraId) {
@@ -204,6 +226,7 @@ class SensorRecorder {
     return {
       cameraId,
       cameraName: recording.cameraName,
+      scenarioId: recording.scenarioId,
       filename: recording.filename,
       startTime: recording.startTime,
       duration,
