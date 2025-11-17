@@ -3,6 +3,7 @@ import { useRecording } from '../contexts/RecordingContext'
 import { useMQTT } from '../contexts/MQTTContext'
 import api from '../services/api'
 import RecordingControlGlobal from './RecordingControlGlobal'
+import SyncStatus from './SyncStatus'
 
 const DashboardSummary = () => {
   const [cameras, setCameras] = useState([])
@@ -273,91 +274,8 @@ const DashboardSummary = () => {
         </div>
       </div>
 
-      {/* Estado de Cámaras */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-              📹 Estado de Cámaras
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Visualiza el estado de todas las cámaras del sistema
-            </p>
-          </div>
-        </div>
-
-        {cameras.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            No hay cámaras configuradas
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cameras.map(camera => {
-              const recording = isRecording(camera.id)
-              const recordingInfo = recordings.get(camera.id)
-              const camStatus = cameraStatus.get(camera.id)
-              const isActive = camStatus?.active || false
-              
-              return (
-                <div 
-                  key={camera.id}
-                  className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-gray-900 dark:text-white">
-                          {camera.name}
-                        </h4>
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          isActive 
-                            ? 'bg-green-500 animate-pulse' 
-                            : 'bg-gray-400'
-                        }`} title={isActive ? 'Cámara activa' : 'Cámara inactiva'}></span>
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 break-all">
-                        {camera.rtspUrl}
-                      </p>
-                      <p className={`text-xs mt-1 ${
-                        isActive 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-gray-500 dark:text-gray-500'
-                      }`}>
-                        {isActive ? '✓ Conectada' : '✕ Desconectada'}
-                      </p>
-                    </div>
-                    {recording && (
-                      <span className="ml-2 px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs rounded-full flex items-center">
-                        <span className="animate-pulse mr-1">●</span>
-                        <span className="flex flex-col items-center">
-                          <span>🎥 + 📊</span>
-                        </span>
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setSelectedCameraId(
-                        selectedCameraId === camera.id ? null : camera.id
-                      )}
-                      className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      📁 Ver Grabaciones
-                    </button>
-                  </div>
-
-                  {recordingInfo?.status === 'recording' && recordingInfo.startedAt && (
-                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Inicio: {new Date(recordingInfo.startedAt).toLocaleTimeString()}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+      {/* Sincronización de Datos */}
+      <SyncStatus />
 
       {/* Panel de Grabaciones */}
       {selectedCameraId && (
@@ -497,83 +415,6 @@ const DashboardSummary = () => {
           )}
         </div>
       )}
-
-      {/* Actividad Reciente de Sensores */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-          📈 Sensores Conectados
-        </h3>
-        
-        {sensorData.size === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <div className="text-4xl mb-2">📡</div>
-            <p>No hay sensores conectados al broker MQTT</p>
-            <p className="text-sm mt-1">Los sensores aparecerán aquí automáticamente cuando publiquen datos.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from(sensorData.entries())
-              .map(([sensorId, sensor]) => {
-                const isRecent = Date.now() - new Date(sensor.timestamp).getTime() < 10000
-                return (
-                  <div
-                    key={sensorId}
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900 dark:text-white">
-                          {sensor.type}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {sensorId}
-                        </p>
-                      </div>
-                      <span className={`px-2 py-1 ${
-                        isRecent 
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' 
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                      } text-xs rounded-full flex items-center`}>
-                        <span className={isRecent ? 'animate-pulse mr-1' : 'mr-1'}>●</span>
-                        {isRecent ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </div>
-                    
-                    <div className="text-sm text-gray-600 dark:text-gray-300">
-                      {sensor.type === 'DHT22' && sensor.value && (
-                        <>
-                          <div>🌡️ {sensor.value.temperature?.toFixed(1)}°C</div>
-                          <div>💧 {sensor.value.humidity?.toFixed(1)}%</div>
-                        </>
-                      )}
-                      {sensor.type === 'MQ135' && sensor.value && (
-                        <div>💨 CO₂: {sensor.value.co2?.toFixed(0)} ppm</div>
-                      )}
-                      {sensor.type === 'EmotiBit' && sensor.value && (
-                        <>
-                          <div>❤️ {sensor.value.heart_rate?.toFixed(0)} bpm</div>
-                          <div>🌡️ {sensor.value.temperature?.toFixed(1)}°C</div>
-                        </>
-                      )}
-                      {!sensor.value && (
-                        <div className="text-xs italic text-gray-400">Sin datos disponibles</div>
-                      )}
-                    </div>
-                    
-                    <div className="mt-2 text-xs text-gray-400">
-                      {new Date(sensor.timestamp).toLocaleTimeString()}
-                      {!isRecent && (
-                        <span className="ml-2 text-orange-500">
-                          (hace {Math.floor((Date.now() - new Date(sensor.timestamp).getTime()) / 1000)}s)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

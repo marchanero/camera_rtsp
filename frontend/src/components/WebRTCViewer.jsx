@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react'
-import RecordingControl from './RecordingControl'
 import './CameraViewer.css'
 
 function WebRTCViewer({ camera }) {
@@ -261,9 +260,6 @@ function WebRTCViewer({ camera }) {
               <option value="ultra">💎 Ultra (5120x1552, 30fps)</option>
             </select>
           )}
-          
-          {/* Control de Grabación Separado */}
-          <RecordingControl camera={camera} />
           
           {/* Controles de Visualización */}
           {status === 'detenido' && (

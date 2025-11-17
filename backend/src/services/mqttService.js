@@ -233,9 +233,13 @@ class MQTTService extends EventEmitter {
     try {
       // Extraer tipo de sensor y ID del tópico
       // Formato: camera_rtsp/sensors/{type}/{sensor_id}
+      // O: camera_rtsp/sensors/{category}/{type}/{sensor_id} (ej: gases/no2/NO2001)
       const parts = topic.split('/')
-      const sensorType = parts[2]
-      const sensorId = parts[3]
+      
+      // El último elemento es siempre el sensor_id
+      const sensorId = parts[parts.length - 1]
+      // Todo lo que está entre 'sensors/' y el sensor_id es el tipo
+      const sensorType = parts.slice(2, -1).join('/')
 
       if (!sensorType || !sensorId) {
         console.warn('⚠️ Tópico de sensor inválido:', topic)
@@ -429,7 +433,15 @@ class MQTTService extends EventEmitter {
       temperature: '°C',
       humidity: '%',
       co2: 'ppm',
-      emotibit: 'mixed'
+      emotibit: 'mixed',
+      presion: 'hPa',
+      ruido: 'dB',
+      luz: 'lux',
+      voc: 'ppb',
+      'gases/no2': 'ppm',
+      'gases/so2': 'ppm',
+      'gases/o3': 'ppm',
+      'gases/co': 'ppm'
     }
     return units[type] || ''
   }

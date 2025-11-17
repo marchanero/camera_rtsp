@@ -249,8 +249,11 @@ export const MQTTProvider = ({ children }) => {
   const processSensorMessage = useCallback((topic, data) => {
     console.log('🔧 processSensorMessage called:', topic, data)
     const parts = topic.split('/')
-    const sensorType = parts[2]
-    const sensorId = parts[3]
+    
+    // El último elemento es siempre el sensor_id
+    const sensorId = parts[parts.length - 1]
+    // Todo lo que está entre 'sensors/' y el sensor_id es el tipo
+    const sensorType = parts.slice(2, -1).join('/')
 
     console.log('🔍 Parsed sensor:', { sensorType, sensorId, parts })
 
