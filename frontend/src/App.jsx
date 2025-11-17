@@ -6,6 +6,7 @@ import CameraModal from './components/CameraModal'
 import ConfirmModal from './components/ConfirmModal'
 import SensorsDashboard from './components/SensorsDashboard'
 import RulesManager from './components/RulesManager'
+import DashboardSummary from './components/DashboardSummary'
 import api from './services/api'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { RecordingProvider, useRecording } from './contexts/RecordingContext'
@@ -19,7 +20,7 @@ function AppContent() {
   const [serverStatus, setServerStatus] = useState('checking')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, cameraId: null, cameraName: '' })
-  const [activeTab, setActiveTab] = useState('cameras')
+  const [activeTab, setActiveTab] = useState('dashboard')
   const { theme, toggleTheme } = useTheme()
   const { isRecording, activeRecordingsCount, startRecording, stopRecording } = useRecording()
 
@@ -130,6 +131,16 @@ function AppContent() {
           {/* Tabs Navigation */}
           <div className="flex space-x-1 border-t border-gray-200 dark:border-gray-700">
             <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-6 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'dashboard'
+                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              📊 Dashboard
+            </button>
+            <button
               onClick={() => setActiveTab('cameras')}
               className={`px-6 py-3 text-sm font-medium transition-colors ${
                 activeTab === 'cameras'
@@ -164,6 +175,12 @@ function AppContent() {
       </header>
       
       {/* Tab Content */}
+      {activeTab === 'dashboard' && (
+        <div className="max-w-7xl mx-auto p-6">
+          <DashboardSummary />
+        </div>
+      )}
+
       {activeTab === 'cameras' && (
         <div className="flex flex-1 gap-4 p-4 overflow-hidden">
           <aside className="card w-80 flex flex-col flex-shrink-0">
