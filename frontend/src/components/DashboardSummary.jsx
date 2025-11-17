@@ -304,18 +304,18 @@ const DashboardSummary = () => {
                   className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
                 >
                   <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-gray-900 dark:text-white">
                           {camera.name}
                         </h4>
-                        <span className={`w-2 h-2 rounded-full ${
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                           isActive 
                             ? 'bg-green-500 animate-pulse' 
                             : 'bg-gray-400'
                         }`} title={isActive ? 'Cámara activa' : 'Cámara inactiva'}></span>
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 break-all">
                         {camera.rtspUrl}
                       </p>
                       <p className={`text-xs mt-1 ${
