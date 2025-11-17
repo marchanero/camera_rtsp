@@ -158,10 +158,16 @@ const autoStartRecordings = async () => {
     })
     
     if (cameras.length > 0) {
-      console.log(`📹 Auto-iniciando grabación para ${cameras.length} cámara(s)...`)
+      console.log(`📹 Verificando estado de ${cameras.length} cámara(s)...`)
       
       for (const camera of cameras) {
         try {
+          // Verificar si ya está grabando (evitar duplicados)
+          if (mediaServerManager.isRecording(camera.id)) {
+            console.log(`⏭️ Grabación ya activa: ${camera.name} (omitiendo)`)
+            continue
+          }
+          
           mediaServerManager.startCamera(camera)
           console.log(`✅ Grabación iniciada: ${camera.name}`)
           

@@ -42,17 +42,26 @@ export function RecordingProvider({ children }) {
       const response = await fetch(`/api/media/status/${cameraId}`)
       const data = await response.json()
       
+      console.log(`🔄 Sync status camera ${cameraId}:`, data)
+      
       if (data.isRecording) {
         setRecordings(prev => new Map(prev).set(cameraId, {
           status: 'recording',
           cameraName,
           startedAt: new Date() // No sabemos exactamente cuándo empezó, usamos ahora
         }))
+        console.log(`✅ Camera ${cameraId} confirmada grabando`)
       } else {
+        // Solo limpiar si tenemos estado previo de grabación
         setRecordings(prev => {
-          const newMap = new Map(prev)
-          newMap.delete(cameraId)
-          return newMap
+          const hadRecording = prev.has(cameraId)
+          if (hadRecording) {
+            console.log(`⚠️ Camera ${cameraId} ya no está grabando, limpiando estado`)
+            const newMap = new Map(prev)
+            newMap.delete(cameraId)
+            return newMap
+          }
+          return prev // No cambiar si no había estado previo
         })
       }
       

@@ -58,7 +58,46 @@ class MediaServerManager {
     this.recordingProcesses = new Map() // Procesos de grabación
   }
 
-  start() {
+  /**
+   * Mata todos los procesos FFmpeg huérfanos (limpieza al iniciar)
+   */
+  async killOrphanProcesses() {
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execPromise = promisify(exec)
+      
+      // Buscar procesos FFmpeg que estén grabando en nuestra carpeta
+      const { stdout } = await execPromise('ps aux | grep ffmpeg | grep recordings | grep -v grep || true')
+      
+      if (stdout.trim()) {
+        const lines = stdout.trim().split('\n')
+        console.log(`⚠️ Encontrados ${lines.length} procesos FFmpeg huérfanos, limpiando...`)
+        
+        for (const line of lines) {
+          const pid = line.trim().split(/\s+/)[1]
+          if (pid && !isNaN(pid)) {
+            try {
+              process.kill(parseInt(pid), 'SIGTERM')
+              console.log(`🧹 Proceso FFmpeg ${pid} terminado`)
+            } catch (error) {
+              console.log(`⚠️ No se pudo terminar proceso ${pid}:`, error.message)
+            }
+          }
+        }
+        
+        // Esperar 1 segundo para que terminen
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        console.log('✅ Limpieza de procesos completada')
+      } else {
+        console.log('✅ No hay procesos FFmpeg huérfanos')
+      }
+    } catch (error) {
+      console.error('❌ Error limpiando procesos:', error.message)
+    }
+  }
+
+  async start() {
     return new Promise((resolve, reject) => {
       try {
         this.nms = new NodeMediaServer(config)
