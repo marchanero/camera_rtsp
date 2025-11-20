@@ -1,5 +1,6 @@
 import React from 'react'
 import { useRecording } from '../contexts/RecordingContext'
+import { useScenario } from '../contexts/ScenarioContext'
 
 export default function RecordingControl({ camera }) {
   const { 
@@ -9,14 +10,41 @@ export default function RecordingControl({ camera }) {
     stopRecording 
   } = useRecording()
 
+  const { activeScenario } = useScenario()
+
   const recordingState = getRecordingStatus(camera.id)
   const recording = isRecording(camera.id)
+
+  // Log del estado del escenario cada vez que cambia
+  React.useEffect(() => {
+    console.log('🔄 RecordingControl - Estado del escenario actualizado:', {
+      hasActiveScenario: !!activeScenario,
+      scenarioId: activeScenario?.id,
+      scenarioName: activeScenario?.name,
+      scenarioObject: activeScenario,
+      localStorage: localStorage.getItem('activeScenarioId')
+    })
+  }, [activeScenario])
 
   const handleToggleRecording = async () => {
     if (recording) {
       await stopRecording(camera.id)
     } else {
-      await startRecording(camera.id, camera.name)
+      // Pasar información del escenario activo al iniciar grabación
+      console.log('🎬 INICIANDO GRABACIÓN - Estado actual:', {
+        scenarioId: activeScenario?.id,
+        scenarioName: activeScenario?.name,
+        activeScenario: activeScenario,
+        localStorage: localStorage.getItem('activeScenarioId'),
+        willSendToBackend: {
+          scenarioId: activeScenario?.id,
+          scenarioName: activeScenario?.name
+        }
+      })
+      await startRecording(camera.id, camera.name, {
+        scenarioId: activeScenario?.id,
+        scenarioName: activeScenario?.name
+      })
     }
   }
 
@@ -51,37 +79,56 @@ export default function RecordingControl({ camera }) {
   }
 
   return (
-    <div className="flex items-center gap-3">
-      {/* Indicador de estado */}
-      <div className={`px-3 py-1 rounded-full text-white text-xs font-semibold ${getStatusColor()}`}>
-        {getStatusText()}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        {/* Indicador de estado */}
+        <div className={`px-3 py-1 rounded-full text-white text-xs font-semibold ${getStatusColor()}`}>
+          {getStatusText()}
+        </div>
+
+        {/* Botón de control */}
+        <button
+          onClick={handleToggleRecording}
+          disabled={recordingState.status === 'starting' || recordingState.status === 'stopping'}
+          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+            recording
+              ? 'bg-red-500 hover:bg-red-600 text-white'
+              : 'bg-green-500 hover:bg-green-600 text-white'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          title={recording ? 'Detener grabación' : 'Iniciar grabación'}
+        >
+          {recording ? '⏹️ Detener' : '⏺️ Grabar'}
+        </button>
+
+        {/* Información adicional */}
+        {recordingState.startedAt && (
+          <span className="text-xs text-gray-600 dark:text-gray-400">
+            Desde: {new Date(recordingState.startedAt).toLocaleTimeString()}
+          </span>
+        )}
+
+        {recordingState.error && (
+          <span className="text-xs text-red-600 dark:text-red-400">
+            {recordingState.error}
+          </span>
+        )}
       </div>
 
-      {/* Botón de control */}
-      <button
-        onClick={handleToggleRecording}
-        disabled={recordingState.status === 'starting' || recordingState.status === 'stopping'}
-        className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-          recording
-            ? 'bg-red-500 hover:bg-red-600 text-white'
-            : 'bg-green-500 hover:bg-green-600 text-white'
-        } disabled:opacity-50 disabled:cursor-not-allowed`}
-        title={recording ? 'Detener grabación' : 'Iniciar grabación'}
-      >
-        {recording ? '⏹️ Detener' : '⏺️ Grabar'}
-      </button>
-
-      {/* Información adicional */}
-      {recordingState.startedAt && (
-        <span className="text-xs text-gray-600 dark:text-gray-400">
-          Desde: {new Date(recordingState.startedAt).toLocaleTimeString()}
-        </span>
-      )}
-
-      {recordingState.error && (
-        <span className="text-xs text-red-600 dark:text-red-400">
-          {recordingState.error}
-        </span>
+      {/* Indicador de escenario activo */}
+      {activeScenario ? (
+        <div className="flex items-center gap-2 px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+          <span className="text-xs">🎭</span>
+          <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
+            Grabando en: {activeScenario.name}
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+          <span className="text-xs">⚠️</span>
+          <span className="text-xs text-gray-600 dark:text-gray-400">
+            Sin escenario activo
+          </span>
+        </div>
       )}
     </div>
   )

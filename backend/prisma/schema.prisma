@@ -31,3 +31,156 @@ model StreamLog {
 
   @@map("stream_logs")
 }
+
+// ==================== SENSORES ====================
+
+model Sensor {
+  id          Int      @id @default(autoincrement())
+  sensorId    String   @unique // Identificador único del sensor físico (ej: "EM:01:23:45:67:89")
+  name        String
+  type        String   // "emotibit", "temperature", "humidity", "co2", "pressure", etc.
+  unit        String?  // "°C", "%", "ppm", "bpm", etc.
+  location    String?  // Ubicación física del sensor
+  
+  // MQTT Topic pattern: {escenario}/{tipo}/{deviceId}/{variable}
+  deviceId    String?  // ID del dispositivo físico (ej: "EM:01:23:45:67:89")
+  topicBase   String?  // Base del topic sin variable (ej: "aula1/emotibit/EM:01:23:45:67:89")
+  variables   String   @default("[]") // JSON array de variables del sensor (ej: ["hr", "eda", "ppg", "temperatura"])
+  
+  isActive    Boolean  @default(true)
+  config      String?  @default("{}") // JSON con configuración específica
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  events      SensorEvent[]
+  rules       RecordingRule[] @relation("SensorRules")
+
+  @@map("sensors")
+  @@index([type])
+  @@index([deviceId])
+  @@index([topicBase])
+}
+
+model SensorEvent {
+  id          Int      @id @default(autoincrement())
+  sensorId    Int
+  sensor      Sensor   @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  value       String   // JSON con los datos del sensor
+  timestamp   DateTime @default(now())
+  processed   Boolean  @default(false)
+
+  @@map("sensor_events")
+  @@index([sensorId, timestamp])
+}
+
+// ==================== REGLAS DE GRABACIÓN ====================
+
+model RecordingRule {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  
+  // Condiciones
+  sensorId    Int
+  sensor      Sensor   @relation("SensorRules", fields: [sensorId], references: [id], onDelete: Cascade)
+  condition   String   // JSON: { operator: ">", value: 30, field: "temperature" }
+  
+  // Acciones
+  action      String   // JSON: { type: "start_recording", cameras: [1,2], duration: 300 }
+  
+  // Metadata
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relaciones
+  executions  RuleExecution[]
+
+  @@map("recording_rules")
+  @@index([isActive, priority])
+}
+
+model RuleExecution {
+  id          Int      @id @default(autoincrement())
+  ruleId      Int
+  rule        RecordingRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  sensorValue String   // Valor del sensor que disparó la regla
+  cameras     String   // IDs de cámaras afectadas (JSON array)
+  success     Boolean  @default(true)
+  error       String?
+  
+  executedAt  DateTime @default(now())
+
+  @@map("rule_executions")
+  @@index([ruleId, executedAt])
+}
+
+// ==================== CONFIGURACIÓN MQTT ====================
+
+model MqttConfig {
+  id          Int      @id @default(autoincrement())
+  broker      String   @default("mqtt://100.82.84.24:1883")
+  username    String   @default("admin")
+  password    String   @default("galgo2526")
+  clientId    String   @default("camera_rtsp_server")
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("mqtt_config")
+}
+
+// ==================== ESCENARIOS/AULAS ====================
+
+model Scenario {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  
+  // Dispositivos asignados (JSON arrays)
+  cameras     String   @default("[]") // Array de IDs de cámaras
+  sensors     String   @default("[]") // Array de IDs de sensores
+  
+  // Configuración de umbrales por tipo de sensor (JSON)
+  thresholds  String   @default("{}") // { "temperature": { min: 18, max: 26 }, "humidity": { min: 30, max: 70 }, ... }
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relaciones
+  recordings  Recording[]
+
+  @@map("scenarios")
+}
+
+// ==================== GRABACIONES ====================
+
+model Recording {
+  id            Int      @id @default(autoincrement())
+  scenarioId    Int
+  scenario      Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  cameraId      Int
+  
+  // Rutas de archivos
+  videoPath     String?  // Ruta al archivo de video MP4
+  sensorPath    String?  // Ruta al archivo JSONL de sensores
+  
+  // Metadatos
+  startTime     DateTime @default(now())
+  endTime       DateTime?
+  duration      Int?     // Duración en segundos
+  fileSize      BigInt?  // Tamaño del archivo de video en bytes
+  sensorRecords Int      @default(0) // Cantidad de registros de sensores
+  
+  // Información adicional (JSON)
+  metadata      String   @default("{}") // { cameraName, scenarioName, sessionId, etc }
+  
+  @@map("recordings")
+  @@index([scenarioId, startTime])
+  @@index([cameraId, startTime])
+}

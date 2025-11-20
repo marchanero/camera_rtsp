@@ -171,6 +171,41 @@ router.get('/:cameraId/live', async (req, res) => {
   }
 })
 
+// GET estado de conexión de cámara (para dashboard)
+router.get('/status/:cameraId', async (req, res) => {
+  try {
+    const { cameraId } = req.params
+    const camera = await req.prisma.camera.findUnique({
+      where: { id: parseInt(cameraId) }
+    })
+    
+    if (!camera) {
+      return res.status(404).json({ error: 'Cámara no encontrada' })
+    }
+
+    try {
+      // Intentar capturar un frame rápido para verificar conectividad
+      const frame = await captureFrame(camera.rtspUrl)
+      res.json({ 
+        active: true,
+        cameraId: camera.id,
+        name: camera.name,
+        lastCheck: new Date().toISOString()
+      })
+    } catch (error) {
+      res.json({
+        active: false,
+        cameraId: camera.id,
+        name: camera.name,
+        lastCheck: new Date().toISOString(),
+        error: error.message
+      })
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // GET información de stream
 router.get('/:cameraId', async (req, res) => {
   try {

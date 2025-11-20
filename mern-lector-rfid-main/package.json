@@ -1,0 +1,22 @@
+{
+  "name": "mern-lector-rfid",
+  "version": "1.0.0",
+  "description": "Aplicación MERN para lector RFID con ESP8266",
+  "scripts": {
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run prisma:generate && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "npm run start:backend",
+    "start:backend": "cd backend && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["rfid", "mern", "esp8266", "serial"],
+  "author": "",
+  "license": "MIT"
+}

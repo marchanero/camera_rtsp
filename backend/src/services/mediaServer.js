@@ -58,7 +58,46 @@ class MediaServerManager {
     this.recordingProcesses = new Map() // Procesos de grabación
   }
 
-  start() {
+  /**
+   * Mata todos los procesos FFmpeg huérfanos (limpieza al iniciar)
+   */
+  async killOrphanProcesses() {
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execPromise = promisify(exec)
+      
+      // Buscar procesos FFmpeg que estén grabando en nuestra carpeta
+      const { stdout } = await execPromise('ps aux | grep ffmpeg | grep recordings | grep -v grep || true')
+      
+      if (stdout.trim()) {
+        const lines = stdout.trim().split('\n')
+        console.log(`⚠️ Encontrados ${lines.length} procesos FFmpeg huérfanos, limpiando...`)
+        
+        for (const line of lines) {
+          const pid = line.trim().split(/\s+/)[1]
+          if (pid && !isNaN(pid)) {
+            try {
+              process.kill(parseInt(pid), 'SIGTERM')
+              console.log(`🧹 Proceso FFmpeg ${pid} terminado`)
+            } catch (error) {
+              console.log(`⚠️ No se pudo terminar proceso ${pid}:`, error.message)
+            }
+          }
+        }
+        
+        // Esperar 1 segundo para que terminen
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        console.log('✅ Limpieza de procesos completada')
+      } else {
+        console.log('✅ No hay procesos FFmpeg huérfanos')
+      }
+    } catch (error) {
+      console.error('❌ Error limpiando procesos:', error.message)
+    }
+  }
+
+  async start() {
     return new Promise((resolve, reject) => {
       try {
         this.nms = new NodeMediaServer(config)
@@ -103,9 +142,9 @@ class MediaServerManager {
     })
     this.rtspProcesses.clear()
 
-    this.recordingProcesses.forEach((process, key) => {
+    this.recordingProcesses.forEach((recordingData, key) => {
       console.log(`🛑 Deteniendo grabación: ${key}`)
-      process.kill('SIGTERM')
+      recordingData.process.kill('SIGTERM')
     })
     this.recordingProcesses.clear()
 
@@ -119,8 +158,17 @@ class MediaServerManager {
    * Inicia SOLO grabación de una cámara (sin HLS streaming)
    * Grabación continua sin pérdida de calidad usando codec copy
    */
-  startCamera(camera) {
+  startCamera(camera, scenarioId = null, scenarioName = null) {
     const streamKey = `camera_${camera.id}`
+    
+    console.log('🎥 mediaServer.startCamera llamado:', {
+      cameraId: camera.id,
+      cameraName: camera.name,
+      scenarioId,
+      scenarioName,
+      hasScenarioId: !!scenarioId,
+      hasScenarioName: !!scenarioName
+    })
     
     // Verificar si ya está grabando
     const recordKey = `${streamKey}_recording`
@@ -129,15 +177,18 @@ class MediaServerManager {
       return { streamKey, message: 'Ya está grabando' }
     }
 
-    console.log(`💾 Iniciando grabación continua: ${camera.name}`)
+    const scenarioInfo = scenarioName ? ` (Escenario: ${scenarioName})` : ''
+    console.log(`💾 Iniciando grabación continua: ${camera.name}${scenarioInfo}`)
     
     // Solo iniciar grabación (sin HLS)
-    this.startRecording(camera, streamKey)
+    this.startRecording(camera, streamKey, { scenarioId, scenarioName })
 
     return {
       streamKey,
       message: 'Grabación iniciada (sin pérdida de calidad)',
-      recording: true
+      recording: true,
+      scenarioId: scenarioId,
+      scenarioName: scenarioName
     }
   }
 
@@ -214,19 +265,48 @@ class MediaServerManager {
 
   /**
    * Inicia grabación continua en segmentos
+   * @param {Object} camera - Objeto cámara con id y name
+   * @param {string} streamKey - Key del stream (ej: camera_1)
+   * @param {Object} options - Opciones de grabación
+   * @param {number} options.scenarioId - ID del escenario
+   * @param {string} options.scenarioName - Nombre del escenario
    */
-  startRecording(camera, streamKey) {
-    const cameraDir = path.join(RECORDINGS_DIR, `camera_${camera.id}`)
+  startRecording(camera, streamKey, options = {}) {
+    const { scenarioId, scenarioName } = options
+    
+    console.log('📹 mediaServer.startRecording llamado:', {
+      cameraId: camera.id,
+      cameraName: camera.name,
+      options,
+      scenarioId,
+      scenarioName,
+      hasScenarioId: !!scenarioId,
+      hasScenarioName: !!scenarioName
+    })
+    
+    // Nueva estructura: recordings/{scenarioName}/{fecha}/camera_{id}/
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    const scenarioFolder = scenarioName ? scenarioName.replace(/[^a-zA-Z0-9]/g, '_') : 'sin_escenario'
+    const cameraDir = path.join(RECORDINGS_DIR, scenarioFolder, today, `camera_${camera.id}`)
+    
+    console.log('📂 Estructura de carpetas:', {
+      scenarioFolder,
+      cameraDir,
+      RECORDINGS_DIR
+    })
     
     if (!fs.existsSync(cameraDir)) {
       fs.mkdirSync(cameraDir, { recursive: true })
     }
 
-    // Formato: YYYY-MM-DD_HH-MM-SS_XXX.mp4
-    // Ejemplo: 2025-11-03_14-30-45_001.mp4
-    const outputPattern = path.join(cameraDir, '%Y-%m-%d_%H-%M-%S_%%03d.mp4')
+    // Nuevo formato: {scenarioName}_{cameraName}_{YYYY-MM-DD_HH-MM-SS}_XXX.mp4
+    // Ejemplo: Aula_A_Camara_Principal_2025-11-17_14-30-45_001.mp4
+    const scenarioPrefix = scenarioName ? `${scenarioName.replace(/[^a-zA-Z0-9]/g, '_')}_` : ''
+    const cameraNameClean = camera.name.replace(/[^a-zA-Z0-9]/g, '_')
+    const outputPattern = path.join(cameraDir, `${scenarioPrefix}${cameraNameClean}_%Y-%m-%d_%H-%M-%S_%%03d.mp4`)
 
-    console.log(`💾 Iniciando grabación: ${camera.name}`)
+    const scenarioInfo = scenarioName ? ` (Escenario: ${scenarioName})` : ''
+    console.log(`💾 Iniciando grabación: ${camera.name}${scenarioInfo}`)
     console.log(`📁 Guardando en: ${cameraDir}`)
 
     const recordArgs = [
@@ -237,19 +317,22 @@ class MediaServerManager {
       '-f', 'segment',
       '-segment_time', '3600', // 1 hora por archivo
       '-segment_format', 'mp4',
+      '-segment_format_options', 'movflags=+faststart', // Optimizar para streaming
       '-reset_timestamps', '1',
       '-strftime', '1',
+      '-avoid_negative_ts', 'make_zero', // Evitar timestamps negativos
+      '-max_muxing_queue_size', '9999', // Prevenir pérdida de paquetes
       outputPattern
     ]
 
     const recordProcess = spawn('ffmpeg', recordArgs, {
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'] // Habilitar stdin para poder enviar 'q'
     })
 
     recordProcess.stderr.on('data', (data) => {
       const output = data.toString()
       if (output.includes('Opening') && output.includes('.mp4')) {
-        console.log(`💾 Nuevo archivo de grabación creado para ${camera.name}`)
+        console.log(`💾 Nuevo archivo de grabación creado para ${camera.name}${scenarioInfo}`)
       }
     })
 
@@ -262,7 +345,14 @@ class MediaServerManager {
       this.recordingProcesses.delete(`${streamKey}_recording`)
     })
 
-    this.recordingProcesses.set(`${streamKey}_recording`, recordProcess)
+    this.recordingProcesses.set(`${streamKey}_recording`, {
+      process: recordProcess,
+      cameraId: camera.id,
+      scenarioId,
+      scenarioName,
+      startTime: new Date(),
+      outputDir: cameraDir
+    })
   }
 
   /**
@@ -273,11 +363,40 @@ class MediaServerManager {
     
     // Detener grabación
     const recordKey = `${streamKey}_recording`
-    const recordProcess = this.recordingProcesses.get(recordKey)
-    if (recordProcess) {
-      recordProcess.kill('SIGTERM')
-      this.recordingProcesses.delete(recordKey)
-      console.log(`🛑 Grabación detenida: camera_${cameraId}`)
+    const recordingData = this.recordingProcesses.get(recordKey)
+    if (recordingData) {
+      const { process: recordProcess, scenarioName } = recordingData
+      const scenarioInfo = scenarioName ? ` (Escenario: ${scenarioName})` : ''
+      console.log(`🛑 Deteniendo grabación: camera_${cameraId}${scenarioInfo}`)
+      
+      // Enviar 'q' a FFmpeg para cerrar limpiamente el archivo
+      try {
+        recordProcess.stdin.write('q')
+        recordProcess.stdin.end()
+      } catch (error) {
+        console.log(`⚠️ No se pudo enviar 'q' a FFmpeg, usando SIGTERM`)
+      }
+      
+      // Timeout de seguridad: si no se cierra en 3 segundos, forzar
+      const timeout = setTimeout(() => {
+        if (this.recordingProcesses.has(recordKey)) {
+          console.log(`⚠️ Forzando cierre de grabación: camera_${cameraId}`)
+          recordProcess.kill('SIGKILL')
+          this.recordingProcesses.delete(recordKey)
+        }
+      }, 3000)
+      
+      // Limpiar timeout cuando el proceso termine
+      recordProcess.on('close', () => {
+        clearTimeout(timeout)
+        this.recordingProcesses.delete(recordKey)
+        console.log(`✅ Grabación guardada correctamente: camera_${cameraId}${scenarioInfo}`)
+      })
+      
+      return recordingData
+    } else {
+      console.log(`⚠️ No hay grabación activa para camera_${cameraId}`)
+      return null
     }
   }
 
@@ -298,30 +417,70 @@ class MediaServerManager {
 
   /**
    * Obtiene lista de grabaciones de una cámara
+   * Busca en todas las carpetas de escenarios
    */
-  getRecordings(cameraId) {
-    const cameraDir = path.join(RECORDINGS_DIR, `camera_${cameraId}`)
+  getRecordings(cameraId, scenarioName = null) {
+    const recordings = []
     
-    if (!fs.existsSync(cameraDir)) {
-      return []
+    // Si se especifica escenario, buscar solo en ese
+    if (scenarioName) {
+      const scenarioFolder = scenarioName.replace(/[^a-zA-Z0-9]/g, '_')
+      const scenarioDir = path.join(RECORDINGS_DIR, scenarioFolder)
+      
+      if (fs.existsSync(scenarioDir)) {
+        this._scanRecordingsInDir(scenarioDir, cameraId, recordings, scenarioName)
+      }
+    } else {
+      // Buscar en todos los escenarios
+      if (fs.existsSync(RECORDINGS_DIR)) {
+        const scenarios = fs.readdirSync(RECORDINGS_DIR)
+        
+        for (const scenario of scenarios) {
+          const scenarioPath = path.join(RECORDINGS_DIR, scenario)
+          if (fs.statSync(scenarioPath).isDirectory()) {
+            this._scanRecordingsInDir(scenarioPath, cameraId, recordings, scenario)
+          }
+        }
+      }
     }
 
-    const files = fs.readdirSync(cameraDir)
-      .filter(file => file.endsWith('.mp4'))
-      .map(file => {
-        const filePath = path.join(cameraDir, file)
-        const stats = fs.statSync(filePath)
-        return {
-          filename: file,
-          size: stats.size,
-          created: stats.birthtime,
-          modified: stats.mtime,
-          path: filePath
-        }
-      })
-      .sort((a, b) => b.created - a.created)
+    return recordings.sort((a, b) => b.created - a.created)
+  }
 
-    return files
+  /**
+   * Escanea un directorio de escenario buscando grabaciones
+   * @private
+   */
+  _scanRecordingsInDir(scenarioDir, cameraId, recordings, scenarioName) {
+    // Recorrer fechas
+    const dates = fs.readdirSync(scenarioDir)
+    
+    for (const date of dates) {
+      const datePath = path.join(scenarioDir, date)
+      if (!fs.statSync(datePath).isDirectory()) continue
+      
+      const cameraDir = path.join(datePath, `camera_${cameraId}`)
+      
+      if (fs.existsSync(cameraDir)) {
+        const files = fs.readdirSync(cameraDir)
+          .filter(file => file.endsWith('.mp4'))
+          .map(file => {
+            const filePath = path.join(cameraDir, file)
+            const stats = fs.statSync(filePath)
+            return {
+              filename: file,
+              size: stats.size,
+              created: stats.birthtime,
+              modified: stats.mtime,
+              path: filePath,
+              scenarioName: scenarioName.replace(/_/g, ' '),
+              date
+            }
+          })
+        
+        recordings.push(...files)
+      }
+    }
   }
 
   /**
@@ -333,6 +492,69 @@ class MediaServerManager {
       recording: Array.from(this.recordingProcesses.keys()),
       mediaServer: this.nms ? 'running' : 'stopped'
     }
+  }
+
+  /**
+   * Verifica si una cámara está grabando
+   */
+  isRecording(cameraId) {
+    return this.recordingProcesses.has(`camera_${cameraId}`)
+  }
+
+  /**
+   * Verifica si una cámara está streaming
+   */
+  isStreaming(cameraId) {
+    return this.rtspProcesses.has(`camera_${cameraId}`)
+  }
+
+  /**
+   * Cierre graceful: detiene todas las grabaciones limpiamente
+   */
+  async gracefulStop() {
+    console.log('🛑 Iniciando cierre graceful de grabaciones...')
+    
+    const recordingKeys = Array.from(this.recordingProcesses.keys())
+    const stopPromises = []
+
+    for (const key of recordingKeys) {
+      const recordingData = this.recordingProcesses.get(key)
+      if (recordingData) {
+        const promise = new Promise((resolve) => {
+          // Enviar 'q' para cerrar limpiamente
+          try {
+            recordingData.process.stdin.write('q')
+            recordingData.process.stdin.end()
+          } catch (error) {
+            console.log(`⚠️ Error enviando 'q' a ${key}:`, error.message)
+          }
+
+          // Timeout de 5 segundos para cada proceso
+          const timeout = setTimeout(() => {
+            if (this.recordingProcesses.has(key)) {
+              console.log(`⚠️ Forzando cierre de ${key}`)
+              recordingData.process.kill('SIGKILL')
+            }
+            resolve()
+          }, 5000)
+
+          recordingData.process.on('close', () => {
+            clearTimeout(timeout)
+            console.log(`✅ Grabación cerrada: ${key}`)
+            resolve()
+          })
+        })
+        
+        stopPromises.push(promise)
+      }
+    }
+
+    // Esperar a que todas las grabaciones se cierren
+    await Promise.all(stopPromises)
+    
+    // Limpiar Map
+    this.recordingProcesses.clear()
+    console.log('✅ Todas las grabaciones cerradas correctamente')
   }
 }
 

@@ -1,14 +1,27 @@
 import express from 'express'
 import mediaServerManager from '../services/mediaServer.js'
+import sensorRecorder from '../services/sensorRecorder.js'
+import mqttRecordingService from '../services/mqttRecordingService.js'
 import fs from 'fs'
 import path from 'path'
 
 const router = express.Router()
 
-// POST /api/media/start/:cameraId - Iniciar grabación continua
+// POST /api/media/start/:cameraId - Iniciar grabación continua (video + sensores)
 router.post('/start/:cameraId', async (req, res) => {
   try {
     const { cameraId } = req.params
+    const { recordSensors = true, sensorIds = [], scenarioId, scenarioName } = req.body
+    
+    console.log('🎬 Backend /api/media/start/:cameraId recibió:', {
+      cameraId,
+      body: req.body,
+      scenarioId,
+      scenarioName,
+      hasScenarioId: !!scenarioId,
+      hasScenarioName: !!scenarioName
+    })
+    
     const camera = await req.prisma.camera.findUnique({
       where: { id: parseInt(cameraId) }
     })
@@ -17,12 +30,52 @@ router.post('/start/:cameraId', async (req, res) => {
       return res.status(404).json({ error: 'Cámara no encontrada' })
     }
 
-    const result = mediaServerManager.startCamera(camera)
+    // Obtener nombre del escenario si se proporciona scenarioId
+    let finalScenarioName = scenarioName
+    if (scenarioId && !finalScenarioName) {
+      const scenario = await req.prisma.scenario.findUnique({
+        where: { id: scenarioId }
+      })
+      finalScenarioName = scenario?.name || 'sin escenario'
+      console.log('📝 Escenario obtenido de BD:', { scenario, finalScenarioName })
+    }
+
+    console.log('🎯 Iniciando grabación con:', {
+      cameraId: camera.id,
+      cameraName: camera.name,
+      scenarioId,
+      finalScenarioName
+    })
+
+    // Iniciar grabación de video con contexto de escenario
+    const videoResult = mediaServerManager.startCamera(camera, scenarioId, finalScenarioName)
+    
+    let sensorResult = null
+    
+    if (recordSensors) {
+      // Iniciar grabación de sensores con contexto de escenario
+      sensorResult = sensorRecorder.startRecording(
+        camera.id, 
+        camera.name,
+        scenarioId,
+        finalScenarioName
+      )
+      
+      // Habilitar grabación automática desde MQTT
+      mqttRecordingService.startRecordingForCamera(camera.id, {
+        recordAllSensors: sensorIds.length === 0,
+        sensorIds
+      })
+    }
     
     res.json({
       success: true,
-      message: `Grabación continua iniciada: ${camera.name}`,
-      ...result
+      message: `Grabación iniciada: ${camera.name}${finalScenarioName ? ` (${finalScenarioName})` : ''}`,
+      video: videoResult,
+      sensors: sensorResult,
+      mqttRecording: recordSensors,
+      scenarioId,
+      scenarioName: finalScenarioName
     })
   } catch (error) {
     console.error('Error iniciando cámara:', error)
@@ -55,15 +108,24 @@ router.post('/start-hls/:cameraId', async (req, res) => {
   }
 })
 
-// POST /api/media/stop/:cameraId - Detener grabación
-router.post('/stop/:cameraId', (req, res) => {
+// POST /api/media/stop/:cameraId - Detener grabación (video + sensores)
+router.post('/stop/:cameraId', async (req, res) => {
   try {
     const { cameraId } = req.params
+    
+    // Detener grabación de video
     mediaServerManager.stopCamera(parseInt(cameraId))
+    
+    // Detener grabación MQTT
+    mqttRecordingService.stopRecordingForCamera(parseInt(cameraId))
+    
+    // Detener grabación de sensores
+    const sensorResult = await sensorRecorder.stopRecording(parseInt(cameraId))
     
     res.json({
       success: true,
-      message: 'Grabación detenida'
+      message: 'Grabación detenida (video + sensores)',
+      sensors: sensorResult
     })
   } catch (error) {
     console.error('Error deteniendo cámara:', error)
@@ -92,6 +154,21 @@ router.get('/status', (req, res) => {
   try {
     const status = mediaServerManager.getStatus()
     res.json(status)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/media/status/:cameraId - Estado de grabación de una cámara
+router.get('/status/:cameraId', (req, res) => {
+  try {
+    const { cameraId } = req.params
+    const isRecording = mediaServerManager.isRecording(parseInt(cameraId))
+    res.json({
+      cameraId: parseInt(cameraId),
+      isRecording,
+      status: isRecording ? 'recording' : 'idle'
+    })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -201,6 +278,199 @@ const streamCurrentRecording = (req, res) => {
 
 router.get('/live/:cameraId', streamCurrentRecording)
 router.get('/current/:cameraId', streamCurrentRecording)
+
+// === RUTAS PARA GRABACIONES DE SENSORES ===
+
+// GET /api/media/sensors/recordings/:cameraId - Listar grabaciones de sensores
+router.get('/sensors/recordings/:cameraId', (req, res) => {
+  try {
+    const { cameraId } = req.params
+    const recordings = sensorRecorder.getRecordings(parseInt(cameraId))
+    
+    res.json({
+      cameraId: parseInt(cameraId),
+      recordings
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/media/sensors/data/:cameraId/:filename - Obtener datos de una grabación
+router.get('/sensors/data/:cameraId/:filename', (req, res) => {
+  try {
+    const { cameraId, filename } = req.params
+    const recordings = sensorRecorder.getRecordings(parseInt(cameraId))
+    const recording = recordings.find(r => r.filename === filename)
+    
+    if (!recording) {
+      return res.status(404).json({ error: 'Grabación no encontrada' })
+    }
+    
+    const data = sensorRecorder.readRecording(recording.path)
+    
+    res.json({
+      filename,
+      scenarioName: recording.scenarioName,
+      date: recording.date,
+      recordCount: data.length,
+      data
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/media/sensors/download/:cameraId/:filename - Descargar grabación de sensores
+router.get('/sensors/download/:cameraId/:filename', (req, res) => {
+  try {
+    const { cameraId, filename } = req.params
+    const recordings = sensorRecorder.getRecordings(parseInt(cameraId))
+    const recording = recordings.find(r => r.filename === filename)
+
+    if (!recording) {
+      return res.status(404).json({ error: 'Grabación no encontrada' })
+    }
+
+    res.download(recording.path, filename)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// DELETE /api/media/sensors/recording/:cameraId/:filename - Eliminar grabación de sensores
+router.delete('/sensors/recording/:cameraId/:filename', (req, res) => {
+  try {
+    const { cameraId, filename } = req.params
+    const recordings = sensorRecorder.getRecordings(parseInt(cameraId))
+    const recording = recordings.find(r => r.filename === filename)
+    
+    if (!recording) {
+      return res.status(404).json({ error: 'Grabación no encontrada' })
+    }
+    
+    const result = sensorRecorder.deleteRecording(recording.path)
+    
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/media/sensors/status/:cameraId - Estado de grabación de sensores
+router.get('/sensors/status/:cameraId', (req, res) => {
+  try {
+    const { cameraId } = req.params
+    const status = sensorRecorder.getRecordingStatus(parseInt(cameraId))
+    
+    res.json({
+      isRecording: status !== null,
+      ...status
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// POST /api/media/sensors/record/:cameraId - Registrar datos de sensor (usado por MQTT)
+router.post('/sensors/record/:cameraId', (req, res) => {
+  try {
+    const { cameraId } = req.params
+    const sensorData = req.body
+    
+    const success = sensorRecorder.recordSensorData(parseInt(cameraId), sensorData)
+    
+    if (success) {
+      res.json({ success: true })
+    } else {
+      res.status(400).json({ error: 'No hay grabación activa' })
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// === FIN RUTAS SENSORES ===
+
+// === RUTAS PARA GRABACIONES POR ESCENARIO ===
+
+// GET /api/media/recordings/scenario/:scenarioId - Listar todas las grabaciones de un escenario
+router.get('/recordings/scenario/:scenarioId', async (req, res) => {
+  try {
+    const { scenarioId } = req.params
+    
+    const recordings = await req.prisma.recording.findMany({
+      where: {
+        scenarioId: parseInt(scenarioId)
+      },
+      include: {
+        scenario: true
+      },
+      orderBy: {
+        startTime: 'desc'
+      }
+    })
+    
+    res.json({
+      scenarioId: parseInt(scenarioId),
+      recordings
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/media/recordings/camera/:cameraId - Listar grabaciones de una cámara (todas los escenarios)
+router.get('/recordings/camera/:cameraId', async (req, res) => {
+  try {
+    const { cameraId } = req.params
+    
+    const recordings = await req.prisma.recording.findMany({
+      where: {
+        cameraId: parseInt(cameraId)
+      },
+      include: {
+        scenario: true
+      },
+      orderBy: {
+        startTime: 'desc'
+      }
+    })
+    
+    res.json({
+      cameraId: parseInt(cameraId),
+      recordings
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/media/recordings/active - Listar grabaciones activas (sin endTime)
+router.get('/recordings/active', async (req, res) => {
+  try {
+    const recordings = await req.prisma.recording.findMany({
+      where: {
+        endTime: null
+      },
+      include: {
+        scenario: true
+      },
+      orderBy: {
+        startTime: 'desc'
+      }
+    })
+    
+    res.json({
+      count: recordings.length,
+      recordings
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// === FIN RUTAS ESCENARIO ===
 
 // GET /api/media/hls/:cameraId/index.m3u8 - Servir manifest HLS (alternativa al puerto 8889)
 router.get('/hls/:cameraId/index.m3u8', (req, res) => {

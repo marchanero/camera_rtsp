@@ -1,0 +1,38 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file for Backend
+        run: |
+          echo "PORT=3000" >> backend/.env
+          echo "DATABASE_URL=file:./dev.db" >> backend/.env
+          echo "MQTT_BROKER=mqtt://mqtt:1883" >> backend/.env
+          # Usar secretos de GitHub para credenciales sensibles
+          echo "CAMERA_IP=${{ secrets.CAMERA_IP || '192.168.8.210' }}" >> backend/.env
+          echo "CAMERA_USER=${{ secrets.CAMERA_USER || 'admin' }}" >> backend/.env
+          echo "CAMERA_PASS=${{ secrets.CAMERA_PASS || 'galgo2526' }}" >> backend/.env
+          echo "CAMERA_PORT=${{ secrets.CAMERA_PORT || '554' }}" >> backend/.env
+
+      - name: Build and Deploy with Docker Compose
+        run: |
+          # Detener contenedores anteriores si existen
+          docker-compose down || true
+          
+          # Construir e iniciar nuevos contenedores
+          # --build fuerza la reconstrucción de las imágenes
+          docker-compose up -d --build
+
+      - name: Prune unused Docker images
+        run: docker image prune -f

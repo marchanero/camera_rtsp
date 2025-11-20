@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test - Persistencia de Escenario</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    h1 { color: #333; }
+    h2 { color: #666; font-size: 18px; }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .primary { background: #4CAF50; color: white; }
+    .secondary { background: #2196F3; color: white; }
+    .danger { background: #f44336; color: white; }
+    .info {
+      padding: 10px;
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      margin: 10px 0;
+    }
+    .success {
+      padding: 10px;
+      background: #e8f5e9;
+      border-left: 4px solid #4CAF50;
+      margin: 10px 0;
+    }
+    .log {
+      background: #263238;
+      color: #aed581;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+      border-bottom: 1px solid #37474f;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 Test de Persistencia de Escenarios</h1>
+  
+  <div class="card">
+    <h2>📝 Instrucciones</h2>
+    <div class="info">
+      <strong>Objetivo:</strong> Validar que el escenario activo persiste en localStorage al recargar la página.
+      <ol>
+        <li>Selecciona un escenario de la lista</li>
+        <li>Verifica que se guarda en localStorage</li>
+        <li>Recarga la página (F5 o Cmd+R)</li>
+        <li>Verifica que el escenario sigue seleccionado</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🎭 Escenarios Disponibles</h2>
+    <div id="scenarios-list">Cargando escenarios...</div>
+  </div>
+
+  <div class="card">
+    <h2>✅ Escenario Activo</h2>
+    <div id="active-scenario">
+      <em>Ningún escenario seleccionado</em>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>💾 Estado localStorage</h2>
+    <div id="localStorage-status"></div>
+    <button class="danger" onclick="clearStorage()">🗑️ Limpiar localStorage</button>
+    <button class="secondary" onclick="checkStorage()">🔄 Actualizar</button>
+  </div>
+
+  <div class="card">
+    <h2>📊 Log de Eventos</h2>
+    <div class="log" id="log"></div>
+    <button class="secondary" onclick="clearLog()">Limpiar Log</button>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3001/api';
+    let scenarios = [];
+    let activeScenario = null;
+
+    // Log helper
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      const timestamp = new Date().toLocaleTimeString();
+      const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+      entry.innerHTML = `[${timestamp}] ${icon} ${message}`;
+      logDiv.insertBefore(entry, logDiv.firstChild);
+    }
+
+    // Cargar escenarios desde API
+    async function loadScenarios() {
+      try {
+        log('Cargando escenarios desde API...');
+        const response = await fetch(`${API_URL}/scenarios`);
+        const data = await response.json();
+        
+        if (data.success) {
+          scenarios = data.data;
+          log(`✅ ${scenarios.length} escenarios cargados`, 'success');
+          renderScenarios();
+          checkPersistedScenario();
+        } else {
+          log(`❌ Error: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        log(`❌ Error de conexión: ${error.message}`, 'error');
+      }
+    }
+
+    // Renderizar lista de escenarios
+    function renderScenarios() {
+      const container = document.getElementById('scenarios-list');
+      container.innerHTML = scenarios.map(s => `
+        <button class="secondary" onclick="selectScenario(${s.id})">
+          ${s.name} (${s.cameras?.length || 0} cámaras, ${s.sensors?.length || 0} sensores)
+        </button>
+      `).join('');
+    }
+
+    // Seleccionar escenario
+    function selectScenario(id) {
+      const scenario = scenarios.find(s => s.id === id);
+      if (scenario) {
+        activeScenario = scenario;
+        localStorage.setItem('activeScenarioId', id.toString());
+        log(`💾 Escenario "${scenario.name}" guardado en localStorage`, 'success');
+        updateUI();
+      }
+    }
+
+    // Verificar escenario persistido
+    function checkPersistedScenario() {
+      const savedId = localStorage.getItem('activeScenarioId');
+      if (savedId) {
+        const scenario = scenarios.find(s => s.id === parseInt(savedId));
+        if (scenario) {
+          activeScenario = scenario;
+          log(`📥 Escenario "${scenario.name}" restaurado desde localStorage`, 'success');
+          updateUI();
+        } else {
+          log(`⚠️ Escenario con ID ${savedId} no encontrado`, 'error');
+          localStorage.removeItem('activeScenarioId');
+        }
+      } else {
+        log('ℹ️ No hay escenario guardado en localStorage');
+      }
+    }
+
+    // Actualizar UI
+    function updateUI() {
+      const activeDiv = document.getElementById('active-scenario');
+      if (activeScenario) {
+        activeDiv.innerHTML = `
+          <div class="success">
+            <h3 style="margin: 0 0 10px 0;">🎭 ${activeScenario.name}</h3>
+            <p style="margin: 5px 0;"><strong>ID:</strong> ${activeScenario.id}</p>
+            <p style="margin: 5px 0;"><strong>Descripción:</strong> ${activeScenario.description || 'N/A'}</p>
+            <p style="margin: 5px 0;"><strong>Cámaras:</strong> ${activeScenario.cameras?.length || 0}</p>
+            <p style="margin: 5px 0;"><strong>Sensores:</strong> ${activeScenario.sensors?.length || 0}</p>
+            <button class="danger" onclick="deselectScenario()">❌ Deseleccionar</button>
+          </div>
+        `;
+      } else {
+        activeDiv.innerHTML = '<em>Ningún escenario seleccionado</em>';
+      }
+      checkStorage();
+    }
+
+    // Deseleccionar escenario
+    function deselectScenario() {
+      activeScenario = null;
+      localStorage.removeItem('activeScenarioId');
+      log('🗑️ Escenario activo eliminado');
+      updateUI();
+    }
+
+    // Verificar localStorage
+    function checkStorage() {
+      const statusDiv = document.getElementById('localStorage-status');
+      const savedId = localStorage.getItem('activeScenarioId');
+      
+      if (savedId) {
+        statusDiv.innerHTML = `
+          <div class="success">
+            <strong>✅ localStorage contiene:</strong><br>
+            <code>activeScenarioId = ${savedId}</code>
+          </div>
+        `;
+      } else {
+        statusDiv.innerHTML = `
+          <div class="info">
+            <strong>ℹ️ localStorage vacío</strong><br>
+            No hay escenario guardado
+          </div>
+        `;
+      }
+    }
+
+    // Limpiar localStorage
+    function clearStorage() {
+      localStorage.removeItem('activeScenarioId');
+      activeScenario = null;
+      log('🗑️ localStorage limpiado');
+      updateUI();
+    }
+
+    // Limpiar log
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+      log('Log limpiado');
+    }
+
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', () => {
+      log('🚀 Iniciando test de persistencia...');
+      checkStorage();
+      loadScenarios();
+    });
+  </script>
+</body>
+</html>

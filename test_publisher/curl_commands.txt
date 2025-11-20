@@ -1,0 +1,90 @@
+# Comandos curl individuales para probar EMQX API
+# Reemplaza las credenciales con las tuyas
+
+API_KEY="334debcfbdc435a8"
+API_SECRET="hC5Tik9CQUZs39CmDzMSi5uoILanHz4lBLl5I7KseDcKG"
+BASE_URL="http://localhost:18083/api/v5"
+AUTH="Authorization: Basic $(echo -n "${API_KEY}:${API_SECRET}" | base64)"
+
+# === ESTADÍSTICAS Y MÉTRICAS ===
+
+# 1. Estadísticas generales del cluster
+curl -X GET "${BASE_URL}/stats" -H "${AUTH}" -H "Content-Type: application/json"
+
+# === CLIENTES ===
+
+# 2. Lista de clientes conectados
+curl -X GET "${BASE_URL}/clients?page=1&limit=10" -H "${AUTH}" -H "Content-Type: application/json"
+
+# 3. Detalles de un cliente específico
+curl -X GET "${BASE_URL}/clients/sensor_client_1" -H "${AUTH}" -H "Content-Type: application/json"
+
+# === SUSCRIPCIONES ===
+
+# 4. Lista de suscripciones activas
+curl -X GET "${BASE_URL}/subscriptions?page=1&limit=10" -H "${AUTH}" -H "Content-Type: application/json"
+
+# === NODOS ===
+
+# 5. Lista de nodos del cluster
+curl -X GET "${BASE_URL}/nodes" -H "${AUTH}" -H "Content-Type: application/json"
+
+# 6. Información de un nodo específico
+curl -X GET "${BASE_URL}/nodes/emqx@node1.emqx.io" -H "${AUTH}" -H "Content-Type: application/json"
+
+# === TÓPICOS ===
+
+# 7. Lista de tópicos activos
+curl -X GET "${BASE_URL}/topics?page=1&limit=10" -H "${AUTH}" -H "Content-Type: application/json"
+
+# 8. Rutas de tópicos
+curl -X GET "${BASE_URL}/routes?page=1&limit=10" -H "${AUTH}" -H "Content-Type: application/json"
+
+# 9. Métricas específicas de un tópico
+curl -X GET "${BASE_URL}/topic-metrics/sensors/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+
+# 10. Suscriptores de un tópico específico
+curl -X GET "${BASE_URL}/topics/sensors/temperature/subscribers" -H "${AUTH}" -H "Content-Type: application/json"
+
+# 11. Detalles de un tópico específico
+curl -X GET "${BASE_URL}/topics/sensors/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+
+# === EJEMPLOS CON TÓPICOS DE TUS PUBLICADORES ===
+
+# PUBLISHER.JS - 5 sensores básicos
+# building/room1/temperature → Temperatura Sala
+curl -X GET "${BASE_URL}/topics/building/room1/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/room1/humidity" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/outdoor/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/outdoor/pressure" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/room2/light" -H "${AUTH}" -H "Content-Type: application/json"
+
+# MULTI-CLIENT-PUBLISHER.JS - 4 clientes, 11 sensores
+# Cliente: building-01 (Edificio Principal)
+curl -X GET "${BASE_URL}/topics/building/floor1/room1/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/floor1/room1/humidity" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/floor1/room1/co2" -H "${AUTH}" -H "Content-Type: application/json"
+
+# Cliente: building-02 (Edificio Secundario)
+curl -X GET "${BASE_URL}/topics/building/floor2/room1/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/floor2/room1/humidity" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/building/floor2/room1/motion" -H "${AUTH}" -H "Content-Type: application/json"
+
+# Cliente: warehouse-01 (Almacén Principal)
+curl -X GET "${BASE_URL}/topics/warehouse/main/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/warehouse/main/humidity" -H "${AUTH}" -H "Content-Type: application/json"
+
+# Cliente: outdoor-01 (Estación Exterior)
+curl -X GET "${BASE_URL}/topics/outdoor/weather/temperature" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/outdoor/weather/humidity" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/topics/outdoor/weather/pressure" -H "${AUTH}" -H "Content-Type: application/json"
+
+# === VERIFICACIÓN DE CLIENTES CONECTADOS ===
+# Verificar que los 4 clientes del multi-client-publisher estén conectados
+curl -X GET "${BASE_URL}/clients?page=1&limit=20" -H "${AUTH}" -H "Content-Type: application/json"
+
+# Verificar cliente específico
+curl -X GET "${BASE_URL}/clients/building-01" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/clients/building-02" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/clients/warehouse-01" -H "${AUTH}" -H "Content-Type: application/json"
+curl -X GET "${BASE_URL}/clients/outdoor-01" -H "${AUTH}" -H "Content-Type: application/json"

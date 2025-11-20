@@ -2,7 +2,7 @@
 
 @layer components {
   .camera-viewer {
-    @apply flex flex-col w-full h-full gap-0;
+    @apply flex flex-col w-full h-full gap-0 min-h-0;
   }
 
   .viewer-header {

@@ -180,7 +180,43 @@ curl -X POST http://localhost:3000/cameras \
 DATABASE_URL="file:./dev.db"
 PORT=3000
 NODE_ENV=development
+MQTT_BROKER_URL=mqtt://localhost:1883
+
+# Credenciales de Cámara (Opcional - Defaults en código)
+CAMERA_IP=192.168.8.210
+CAMERA_USER=admin
+CAMERA_PASS=galgo2526
+CAMERA_PORT=554
 ```
+
+## 🐳 Docker Deployment
+
+El proyecto incluye configuración para despliegue con Docker y Docker Compose, ideal para Raspberry Pi o servidores.
+
+### Requisitos
+- Docker
+- Docker Compose
+
+### Despliegue Rápido
+
+1. Clonar el repositorio
+2. Crear archivo `.env` en `backend/` (usar `.env.example` como guía)
+3. Ejecutar:
+
+```bash
+docker-compose up -d
+```
+
+Esto iniciará:
+- **Backend**: http://localhost:3000
+- **Frontend**: http://localhost (Puerto 80)
+- **MQTT Broker**: Puerto 1883
+
+### Volúmenes Persistentes
+- `backend/prisma`: Base de datos SQLite
+- `backend/recordings`: Grabaciones de video
+- `backend/media`: Archivos temporales de streaming
+- `mosquitto/data`: Persistencia MQTT
 
 ## 📦 Dependencias Principales
 

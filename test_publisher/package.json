@@ -1,0 +1,27 @@
+{
+  "name": "camera-rtsp-test-publishers",
+  "version": "2.0.0",
+  "description": "Publicadores MQTT de sensores virtuales para testing de Camera RTSP - Soporta temperatura, humedad, CO2 y EmotiBit",
+  "main": "publish-sensors-multi.js",
+  "scripts": {
+    "start": "node start.js",
+    "multi": "node publish-sensors-multi.js",
+    "stress": "node publish-sensors-stress.js",
+    "diagnostic": "node diagnostic_mqtt.js",
+    "test": "node diagnostic_mqtt.js"
+  },
+  "keywords": [
+    "mqtt",
+    "sensors",
+    "iot",
+    "testing",
+    "publisher",
+    "emqx",
+    "camera-rtsp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mqtt": "^5.14.1"
+  }
+}

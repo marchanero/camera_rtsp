@@ -1,9 +1,12 @@
 // Configuración de cámaras y credenciales
+import dotenv from 'dotenv'
+dotenv.config()
+
 export const cameraConfig = {
-  ip: '192.168.8.210',
-  username: 'admin',
-  password: 'galgo2526',
-  port: 554,
+  ip: process.env.CAMERA_IP || '192.168.8.210',
+  username: process.env.CAMERA_USER || 'admin',
+  password: process.env.CAMERA_PASS || 'galgo2526',
+  port: process.env.CAMERA_PORT || 554,
   protocol: 'rtsp'
 }
 

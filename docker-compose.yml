@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: camera_rtsp_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DATABASE_URL=file:./dev.db
+      - MQTT_BROKER=mqtt://mqtt:1883
+      # Las credenciales de la cámara se deben pasar por .env o aquí
+      - CAMERA_IP=${CAMERA_IP:-192.168.8.210}
+      - CAMERA_USER=${CAMERA_USER:-admin}
+      - CAMERA_PASS=${CAMERA_PASS:-galgo2526}
+      - CAMERA_PORT=${CAMERA_PORT:-554}
+    volumes:
+      - ./backend/prisma:/app/prisma
+      - ./backend/recordings:/app/recordings
+      - ./backend/media:/app/media
+    depends_on:
+      - mqtt
+
+  frontend:
+    build: ./frontend
+    container_name: camera_rtsp_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: camera_rtsp_mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+volumes:
+  prisma_data:
+  recordings_data:
+  media_data:
