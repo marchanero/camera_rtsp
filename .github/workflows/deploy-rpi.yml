@@ -28,11 +28,11 @@ jobs:
       - name: Build and Deploy with Docker Compose
         run: |
           # Detener contenedores anteriores si existen
-          docker-compose down || true
+          docker compose down || true
           
           # Construir e iniciar nuevos contenedores
           # --build fuerza la reconstrucción de las imágenes
-          docker-compose up -d --build
+          docker compose up -d --build
 
       - name: Prune unused Docker images
         run: docker image prune -f
