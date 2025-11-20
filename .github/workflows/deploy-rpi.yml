@@ -11,6 +11,13 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Fix permissions before checkout
+        run: |
+          # Usar Docker para cambiar el propietario de los archivos creados por root (como mosquitto.db)
+          # Esto evita el error de permisos en actions/checkout
+          docker run --rm -v $(pwd):/work -w /work alpine chown -R $(id -u):$(id -g) . || true
+        continue-on-error: true
+
       - name: Checkout code
         uses: actions/checkout@v4
 
