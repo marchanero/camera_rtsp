@@ -4,29 +4,133 @@ import { useScenario } from '../contexts/ScenarioContext'
 import api from '../services/api'
 
 const RecordingControlGlobal = () => {
-  const { 
-    recordings, 
-    startAllRecordings, 
-    stopAllRecordings, 
-    activeRecordingsCount 
+  const {
+    recordings,
+    startAllRecordings,
+    stopAllRecordings,
+    activeRecordingsCount,
+    initialSyncDone
   } = useRecording()
 
   const { activeScenario } = useScenario()
-  
+
   const [cameras, setCameras] = useState([])
-  const [recordingState, setRecordingState] = useState('idle') // 'idle' | 'recording' | 'paused' | 'finished'
-  const [elapsedTime, setElapsedTime] = useState(0)
-  const [pausedTime, setPausedTime] = useState(0)
-  const [totalRecordingTime, setTotalRecordingTime] = useState(0)
-  const [pausedAt, setPausedAt] = useState(null)
-  
+  const [recordingState, setRecordingState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recordingControlState')
+      return saved ? JSON.parse(saved).recordingState || 'idle' : 'idle'
+    } catch {
+      return 'idle'
+    }
+  })
+  const [elapsedTime, setElapsedTime] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recordingControlState')
+      return saved ? JSON.parse(saved).elapsedTime || 0 : 0
+    } catch {
+      return 0
+    }
+  })
+  const [pausedTime, setPausedTime] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recordingControlState')
+      return saved ? JSON.parse(saved).pausedTime || 0 : 0
+    } catch {
+      return 0
+    }
+  })
+  const [totalRecordingTime, setTotalRecordingTime] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recordingControlState')
+      return saved ? JSON.parse(saved).totalRecordingTime || 0 : 0
+    } catch {
+      return 0
+    }
+  })
+  const [pausedAt, setPausedAt] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recordingControlState')
+      const parsed = saved ? JSON.parse(saved) : {}
+      return parsed.pausedAt ? new Date(parsed.pausedAt) : null
+    } catch {
+      return null
+    }
+  })
+
   // Referencias para cálculo preciso del tiempo
   const recordingStartTime = useRef(null)
   const pauseStartTime = useRef(null)
   const totalPausedDuration = useRef(0)
+
   // Referencia para recordings (evita re-renders infinitos)
   const recordingsRef = useRef(recordings)
   recordingsRef.current = recordings
+
+  // Estado para controlar cuando el estado está completamente cargado
+  const [stateLoaded, setStateLoaded] = useState(false)
+  const [forceUpdate, setForceUpdate] = useState(0) // Para forzar re-renders cuando cambian las referencias
+  const [backendVerified, setBackendVerified] = useState(false) // Verificación con backend después de cargar localStorage
+
+  // Función para forzar actualización del tiempo mostrado
+  const updateDisplayedTime = useCallback(() => {
+    if (recordingState === 'recording') {
+      const elapsed = calculateElapsedTime()
+      setElapsedTime(elapsed)
+      setTotalRecordingTime(elapsed)
+    } else if (recordingState === 'paused') {
+      setPausedTime(calculatePausedTime())
+    }
+  }, [recordingState])
+
+  // Cargar estado de referencias desde localStorage al montar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('recordingControlState')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.recordingStartTime) {
+          recordingStartTime.current = new Date(parsed.recordingStartTime).getTime()
+        }
+        if (parsed.pauseStartTime) {
+          pauseStartTime.current = new Date(parsed.pauseStartTime).getTime()
+        }
+        totalPausedDuration.current = parsed.totalPausedDuration || 0
+
+        // Si se recuperó estado de recording, actualizar inmediatamente
+        if (parsed.recordingState === 'recording' && recordingStartTime.current) {
+          updateDisplayedTime()
+        }
+      }
+    } catch (error) {
+      console.error('Error cargando estado de referencias:', error)
+    } finally {
+      setStateLoaded(true)
+    }
+  }, []) // Solo al montar // Solo al montar
+
+  // Función para guardar estado en localStorage
+  const saveStateToLocalStorage = useCallback(() => {
+    try {
+      const state = {
+        recordingState,
+        elapsedTime,
+        pausedTime,
+        totalRecordingTime,
+        pausedAt: pausedAt ? pausedAt.toISOString() : null,
+        recordingStartTime: recordingStartTime.current ? new Date(recordingStartTime.current).toISOString() : null,
+        pauseStartTime: pauseStartTime.current ? new Date(pauseStartTime.current).toISOString() : null,
+        totalPausedDuration: totalPausedDuration.current
+      }
+      localStorage.setItem('recordingControlState', JSON.stringify(state))
+    } catch (error) {
+      console.error('Error guardando estado del contador:', error)
+    }
+  }, [recordingState, elapsedTime, pausedTime, totalRecordingTime, pausedAt])
+
+  // Guardar estado cada vez que cambie
+  useEffect(() => {
+    saveStateToLocalStorage()
+  }, [saveStateToLocalStorage])
 
   // Cargar cámaras al montar el componente
   useEffect(() => {
@@ -38,7 +142,7 @@ const RecordingControlGlobal = () => {
         console.error('Error cargando cámaras:', error)
       }
     }
-    
+
     fetchCameras()
   }, [])
 
@@ -46,33 +150,33 @@ const RecordingControlGlobal = () => {
    * Calcula el tiempo transcurrido basándose en timestamps reales
    * Esto es inmune al throttling del navegador cuando la pestaña está en segundo plano
    */
-  const calculateElapsedTime = useCallback(() => {
+  const calculateElapsedTime = () => {
     if (!recordingStartTime.current) return 0
-    
+
     const now = Date.now()
     let elapsed = Math.floor((now - recordingStartTime.current) / 1000)
-    
+
     // Restar el tiempo que estuvo pausado
     elapsed -= Math.floor(totalPausedDuration.current / 1000)
-    
+
     // Si está actualmente pausado, restar también el tiempo de pausa actual
     if (pauseStartTime.current) {
       elapsed -= Math.floor((now - pauseStartTime.current) / 1000)
     }
-    
+
     return Math.max(0, elapsed)
-  }, [])
+  }
 
   /**
    * Calcula el tiempo de pausa actual
    */
-  const calculatePausedTime = useCallback(() => {
+  const calculatePausedTime = () => {
     if (!pauseStartTime.current) return Math.floor(totalPausedDuration.current / 1000)
-    
+
     const now = Date.now()
     const currentPauseDuration = now - pauseStartTime.current
     return Math.floor((totalPausedDuration.current + currentPauseDuration) / 1000)
-  }, [])
+  }
 
   /**
    * Sincroniza el tiempo con el backend
@@ -80,7 +184,7 @@ const RecordingControlGlobal = () => {
    */
   const syncTimeWithBackend = useCallback(async () => {
     if (recordingsRef.current.size === 0) return
-    
+
     try {
       // Obtener el startedAt más antiguo de las grabaciones activas
       let earliestStart = null
@@ -92,45 +196,61 @@ const RecordingControlGlobal = () => {
           }
         }
       }
-      
+
       if (earliestStart) {
         recordingStartTime.current = earliestStart.getTime()
-        // Actualizar inmediatamente el tiempo mostrado
-        setElapsedTime(calculateElapsedTime())
-        setTotalRecordingTime(calculateElapsedTime())
+        // Forzar actualización inmediata del tiempo mostrado
+        updateDisplayedTime()
         console.log('⏱️ Tiempo sincronizado con backend, inicio:', earliestStart.toISOString())
       }
     } catch (error) {
       console.error('Error sincronizando tiempo:', error)
     }
-  }, [calculateElapsedTime]) // Removido recordings de las dependencias
+  }, []) // Removido recordings y calculateElapsedTime de las dependencias
 
   // Timer effect - ahora calcula el tiempo real en lugar de incrementar
   useEffect(() => {
+    if (!stateLoaded) {
+      console.log('⏱️ Temporizador esperando stateLoaded...');
+      return // Esperar a que se cargue el estado
+    }
+
+    console.log('⏱️ Inicializando temporizador - Estado:', recordingState, 'stateLoaded:', stateLoaded);
     let interval
     if (recordingState === 'recording' || recordingState === 'paused') {
+      console.log('⏱️ Creando interval para estado:', recordingState)
       // Actualizar cada segundo basándose en el tiempo real
       interval = setInterval(() => {
+        const elapsed = calculateElapsedTime()
+        const paused = calculatePausedTime()
+
         if (recordingState === 'recording') {
-          const elapsed = calculateElapsedTime()
+          console.log('⏱️ Actualizando tiempo - Elapsed:', elapsed, 'Total:', elapsed)
           setElapsedTime(elapsed)
           setTotalRecordingTime(elapsed)
         } else if (recordingState === 'paused') {
-          setPausedTime(calculatePausedTime())
+          console.log('⏱️ Actualizando tiempo pausado:', paused)
+          setPausedTime(paused)
         }
       }, 1000)
-      
+
       // Actualizar inmediatamente
       if (recordingState === 'recording') {
         const elapsed = calculateElapsedTime()
+        console.log('⏱️ Actualización inmediata - Elapsed:', elapsed)
         setElapsedTime(elapsed)
         setTotalRecordingTime(elapsed)
       }
+    } else {
+      console.log('⏱️ No se crea interval - Estado:', recordingState)
     }
     return () => {
-      if (interval) clearInterval(interval)
+      if (interval) {
+        console.log('⏱️ Limpiando temporizador')
+        clearInterval(interval)
+      }
     }
-  }, [recordingState, calculateElapsedTime, calculatePausedTime])
+  }, [recordingState, stateLoaded])
 
   /**
    * Maneja cuando la página vuelve a ser visible
@@ -148,19 +268,53 @@ const RecordingControlGlobal = () => {
         setTotalRecordingTime(elapsed)
       }
     }
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [recordingState, calculateElapsedTime, syncTimeWithBackend])
+  }, [recordingState, syncTimeWithBackend])
 
   // Sync with recording context
   useEffect(() => {
+    // Solo sincronizar si el estado está completamente cargado
+    if (!stateLoaded) {
+      console.log('🔄 Sincronización esperando stateLoaded...');
+      return
+    }
+
+    // IMPORTANTE: Esperar a que el backend confirme el estado antes de confiar en localStorage
+    if (!initialSyncDone) {
+      console.log('🔄 Sincronización esperando initialSyncDone del backend...');
+      return
+    }
+
+    // Verificación inicial: si localStorage dice "recording" pero backend no tiene sesiones
+    if (!backendVerified && recordingState !== 'idle') {
+      if (activeRecordingsCount === 0) {
+        console.log('⚠️ localStorage decía recording pero backend no tiene sesiones, reseteando estado local')
+        setRecordingState('idle')
+        recordingStartTime.current = null
+        pauseStartTime.current = null
+        totalPausedDuration.current = 0
+        setElapsedTime(0)
+        setPausedTime(0)
+        setTotalRecordingTime(0)
+        localStorage.removeItem('recordingControlState')
+      }
+      setBackendVerified(true)
+      return
+    }
+
+    console.log('🔄 Sincronizando - activeRecordingsCount:', activeRecordingsCount, 'recordingState:', recordingState);
+
     if (activeRecordingsCount > 0 && recordingState === 'idle') {
+      console.log('🔄 Detectadas grabaciones activas, cambiando a recording');
       // Obtener el tiempo de inicio de las grabaciones activas
       let earliestStart = null
+      let totalElapsedFromBackend = 0
+
       for (const [, recordingInfo] of recordingsRef.current.entries()) {
         if (recordingInfo.startedAt) {
           const startDate = new Date(recordingInfo.startedAt)
@@ -168,24 +322,38 @@ const RecordingControlGlobal = () => {
             earliestStart = startDate
           }
         }
+        if (recordingInfo.elapsedSeconds) {
+          totalElapsedFromBackend = Math.max(totalElapsedFromBackend, recordingInfo.elapsedSeconds)
+        }
       }
-      
+
       if (earliestStart) {
         recordingStartTime.current = earliestStart.getTime()
+        console.log('🔄 Establecido recordingStartTime:', new Date(recordingStartTime.current).toLocaleString());
+        // Si hay tiempo del backend, usarlo para corregir
+        if (totalElapsedFromBackend > 0) {
+          const currentCalculated = calculateElapsedTime()
+          // Si la diferencia es significativa (>5 segundos), usar el del backend
+          if (Math.abs(currentCalculated - totalElapsedFromBackend) > 5) {
+            console.log('⏱️ Corrigiendo tiempo con backend:', totalElapsedFromBackend, 'vs calculado:', currentCalculated)
+            // Ajustar el startTime para que coincida con el backend
+            recordingStartTime.current = Date.now() - (totalElapsedFromBackend * 1000) - (totalPausedDuration.current)
+          }
+        }
       } else {
         recordingStartTime.current = Date.now()
       }
-      
+
       totalPausedDuration.current = 0
       pauseStartTime.current = null
       setRecordingState('recording')
-      
-      // Calcular tiempo inicial
-      const elapsed = calculateElapsedTime()
-      setElapsedTime(elapsed)
-      setTotalRecordingTime(elapsed)
-      
+      setBackendVerified(true)
+
+      // Calcular tiempo inicial y forzar actualización
+      updateDisplayedTime()
+
     } else if (activeRecordingsCount === 0 && recordingState === 'recording') {
+      console.log('⏹️ No hay grabaciones activas en backend, reseteando estado local')
       setRecordingState('idle')
       recordingStartTime.current = null
       pauseStartTime.current = null
@@ -193,8 +361,12 @@ const RecordingControlGlobal = () => {
       setElapsedTime(0)
       setPausedTime(0)
       setTotalRecordingTime(0)
+      // Limpiar estado persistente si no hay grabaciones activas
+      localStorage.removeItem('recordingControlState')
+    } else {
+      console.log('🔄 No hay cambios necesarios - activeRecordingsCount:', activeRecordingsCount, 'recordingState:', recordingState);
     }
-  }, [activeRecordingsCount, recordingState, calculateElapsedTime]) // Removido recordings de las dependencias
+  }, [activeRecordingsCount, recordingState, stateLoaded, initialSyncDone, backendVerified]) // Añadido initialSyncDone y backendVerified
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
@@ -247,7 +419,7 @@ const RecordingControlGlobal = () => {
       console.warn('No hay cámaras disponibles para grabar')
       return
     }
-    
+
     console.log('🎬 Iniciando grabación global con escenario:', {
       scenarioId: activeScenario?.id,
       scenarioName: activeScenario?.name
@@ -272,6 +444,7 @@ const RecordingControlGlobal = () => {
     pauseStartTime.current = Date.now()
     setRecordingState('paused')
     setPausedAt(Date.now())
+    updateDisplayedTime()
   }
 
   const handleResume = () => {
@@ -282,6 +455,7 @@ const RecordingControlGlobal = () => {
     }
     setRecordingState('recording')
     setPausedAt(null)
+    updateDisplayedTime()
   }
 
   const handleStop = async () => {
@@ -294,13 +468,15 @@ const RecordingControlGlobal = () => {
     setPausedTime(0)
     setTotalRecordingTime(0)
     setPausedAt(null)
+    // Limpiar estado persistente
+    localStorage.removeItem('recordingControlState')
   }
 
   const handleFinish = async () => {
     await stopAllRecordings()
     setRecordingState('finished')
     setPausedAt(null)
-    
+
     // Volver a idle después de 3 segundos
     setTimeout(() => {
       setRecordingState('idle')
@@ -310,6 +486,8 @@ const RecordingControlGlobal = () => {
       setElapsedTime(0)
       setPausedTime(0)
       setTotalRecordingTime(0)
+      // Limpiar estado persistente
+      localStorage.removeItem('recordingControlState')
     }, 3000)
   }
 
@@ -366,8 +544,8 @@ const RecordingControlGlobal = () => {
 
                 <div className="relative flex items-center space-x-2">
                   <svg className="w-6 h-6 group-hover:animate-bounce" fill="currentColor" viewBox="0 0 24 24">
-                    <rect x="6" y="4" width="4" height="16"/>
-                    <rect x="14" y="4" width="4" height="16"/>
+                    <rect x="6" y="4" width="4" height="16" />
+                    <rect x="14" y="4" width="4" height="16" />
                   </svg>
                   <span className="text-base">PAUSAR</span>
                 </div>
@@ -494,8 +672,8 @@ const RecordingControlGlobal = () => {
 
                   <div className="relative flex items-center space-x-3">
                     <svg className="w-8 h-8 group-hover:animate-bounce" fill="currentColor" viewBox="0 0 24 24">
-                      <rect x="6" y="4" width="4" height="16"/>
-                      <rect x="14" y="4" width="4" height="16"/>
+                      <rect x="6" y="4" width="4" height="16" />
+                      <rect x="14" y="4" width="4" height="16" />
                     </svg>
                     <span className="text-lg">PAUSAR</span>
                   </div>

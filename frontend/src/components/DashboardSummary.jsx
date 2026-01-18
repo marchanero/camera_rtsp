@@ -69,7 +69,8 @@ const DashboardSummary = () => {
     stopAllRecordings,
     getMaxElapsedSeconds,
     getOldestStartTime,
-    initialSyncDone
+    initialSyncDone,
+    isSyncing
   } = useRecording()
 
   const {
@@ -133,28 +134,37 @@ const DashboardSummary = () => {
 
   // Sync with recording context
   useEffect(() => {
+    // 1. Manejar transición de estado
     if (activeRecordingsCount > 0 && recordingState === 'idle') {
       setRecordingState('recording')
-      if (initialSyncDone) {
-        const syncedElapsed = getMaxElapsedSecondsRef.current?.() || 0
-        const oldestStart = getOldestStartTimeRef.current?.()
-
-        if (oldestStart) {
-          recordingStartTime.current = new Date(oldestStart).getTime()
-        } else {
-          recordingStartTime.current = Date.now()
-        }
-
-        if (syncedElapsed > 0) {
-          setElapsedTime(syncedElapsed)
-        } else {
-          setElapsedTime(calculateElapsedTime())
-        }
-      }
     } else if (activeRecordingsCount === 0 && recordingState === 'recording') {
       setRecordingState('idle')
       recordingStartTime.current = null
       setElapsedTime(0)
+    }
+
+    // 2. Manejar inicialización/actualización del timer
+    // Esto se ejecuta si hay grabaciones, independientemente de si acabamos de cambiar a 'recording' o ya lo estábamos
+    if (activeRecordingsCount > 0 && initialSyncDone) {
+      const syncedElapsed = getMaxElapsedSecondsRef.current?.() || 0
+      const oldestStart = getOldestStartTimeRef.current?.()
+
+      // Si no tenemos timestamp de inicio local, o si el backend nos da uno mejor, actualizar
+      if (!recordingStartTime.current || oldestStart) {
+        if (oldestStart) {
+          recordingStartTime.current = new Date(oldestStart).getTime()
+        } else if (!recordingStartTime.current) {
+          // Fallback solo si no tenemos nada
+          recordingStartTime.current = Date.now()
+        }
+      }
+
+      // Actualizar tiempo transcurrido visual
+      if (syncedElapsed > 0) {
+        setElapsedTime(syncedElapsed)
+      } else {
+        setElapsedTime(calculateElapsedTime())
+      }
     }
   }, [activeRecordingsCount, recordingState, initialSyncDone, calculateElapsedTime])
 
@@ -464,6 +474,7 @@ const DashboardSummary = () => {
         elapsedTime={elapsedTime}
         mqttConnected={mqttConnected}
         syncStatus={syncStatus}
+        isRecordingSyncing={isSyncing && recordingState === 'recording'}
       />
 
       {/* Main Layout - Two Columns */}

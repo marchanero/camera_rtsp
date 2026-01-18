@@ -23,6 +23,7 @@ export function RecordingProvider({ children }) {
 
   const [globalRecordingStatus, setGlobalRecordingStatus] = useState('idle') // 'idle', 'starting', 'recording', 'stopping'
   const [initialSyncDone, setInitialSyncDone] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(true)
 
   // Persistir estado de grabación en localStorage
   useEffect(() => {
@@ -40,15 +41,24 @@ export function RecordingProvider({ children }) {
    * Verifica qué grabaciones siguen activas realmente en el servidor
    */
   useEffect(() => {
-    const syncInitialState = async () => {
+    let pollingInterval = null
+    let attempts = 0
+    const FAST_POLLING_DURATION = 10000 // 10 segundos
+    const POLLING_INTERVAL = 2000 // 2 segundos
+
+    const performSync = async () => {
       try {
-        console.log('🔄 Sincronizando estado de grabaciones con backend...')
+        if (attempts === 0) setIsSyncing(true)
+        console.log(`🔄 Sincronizando estado de grabaciones (intento ${attempts + 1})...`)
 
         // Obtener estado global del sistema de grabación SINCRONIZADA
         const response = await fetch('/api/recordings/sync/status')
+        if (!response.ok) throw new Error('Network response was not ok')
+
         const backendStatus = await response.json()
 
-        console.log('📊 Estado del backend (Sync):', backendStatus)
+        // Si es el primer intento o hay cambios significativos, loguear
+        if (attempts === 0) console.log('📊 Estado del backend (Sync):', backendStatus)
 
         // Crear mapa de detalles de grabación desde el backend
         const recordingDetailsMap = new Map()
@@ -58,63 +68,83 @@ export function RecordingProvider({ children }) {
           }
         }
 
-        // Las grabaciones activas en el backend (ej: sesiones activas)
         const activeBackendRecordings = new Set(
           (backendStatus.sessions || []).map(s => s.cameraId)
         )
 
-        console.log('🎬 Grabaciones activas en backend:', Array.from(activeBackendRecordings))
-
-        // Actualizar el estado local basándose en el backend
         setRecordings(prev => {
           const updated = new Map()
+          let hasChanges = false
 
-          // Mantener solo las grabaciones que el backend confirma como activas
+          // Mantener y actualizar grabaciones activas
           for (const [cameraId, recordingInfo] of prev.entries()) {
             if (activeBackendRecordings.has(cameraId)) {
               const detail = recordingDetailsMap.get(cameraId)
+              // Comprobamos si hay cambios reales para evitar re-renders innecesarios si es posible
+              // (Simplificado: siempre actualizamos si está activo para tener el elapsedSeconds fresco)
               updated.set(cameraId, {
                 ...recordingInfo,
                 status: 'recording',
-                // Sincronizar tiempo de inicio desde el backend
                 startedAt: detail?.startTime ? new Date(detail.startTime) : recordingInfo.startedAt,
                 elapsedSeconds: detail?.elapsedSeconds || 0,
                 scenarioName: detail?.scenarioName || recordingInfo.scenarioName
               })
-              console.log(`✅ Grabación ${cameraId} confirmada activa (${detail?.elapsedSeconds || 0}s)`)
-            } else {
-              console.log(`🗑️ Grabación ${cameraId} ya no está activa, removiendo del estado`)
             }
           }
 
-          // Si hay grabaciones en backend que no tenemos en el estado local, agregarlas
+          // Agregar nuevas grabaciones del backend
           for (const cameraId of activeBackendRecordings) {
             if (!updated.has(cameraId)) {
               const detail = recordingDetailsMap.get(cameraId)
-              console.log(`➕ Agregando grabación ${cameraId} que estaba activa en backend (${detail?.elapsedSeconds || 0}s)`)
               updated.set(cameraId, {
                 status: 'recording',
-                cameraName: `Cámara ${cameraId}`, // Nombre por defecto
+                cameraName: `Cámara ${cameraId}`,
                 startedAt: detail?.startTime ? new Date(detail.startTime) : new Date(),
                 elapsedSeconds: detail?.elapsedSeconds || 0,
                 scenarioName: detail?.scenarioName
               })
+              hasChanges = true
             }
           }
 
-          return updated
+          // Detectar si se eliminaron grabaciones
+          if (prev.size !== updated.size) hasChanges = true
+
+          return updated.size !== prev.size || hasChanges ? updated : prev
         })
 
-        setInitialSyncDone(true)
-        console.log('✅ Sincronización inicial completada')
+        if (!initialSyncDone) setInitialSyncDone(true)
 
       } catch (error) {
-        console.error('❌ Error sincronizando estado inicial:', error)
-        setInitialSyncDone(true) // Marcar como hecho aunque falle, para no bloquear
+        console.error('❌ Error sincronizando estado:', error)
+        // No marcamos initialSyncDone como true si falla el primer intento crítico, 
+        // pero para evitar bloqueo de UI podríamos querer hacerlo después de varios intentos
+      } finally {
+        setIsSyncing(false)
+        attempts++
       }
     }
 
-    syncInitialState()
+    // Ejecutar inmediatamente
+    performSync()
+
+    // Configurar polling rápido
+    pollingInterval = setInterval(() => {
+      performSync()
+    }, POLLING_INTERVAL)
+
+    // Detener polling después de FAST_POLLING_DURATION
+    const timeoutId = setTimeout(() => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval)
+        console.log('⏹️ Polling rápido inicial finalizado')
+      }
+    }, FAST_POLLING_DURATION)
+
+    return () => {
+      if (pollingInterval) clearInterval(pollingInterval)
+      clearTimeout(timeoutId)
+    }
   }, []) // Solo al montar
 
   /**
@@ -124,28 +154,28 @@ export function RecordingProvider({ children }) {
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
-        console.log('👁️ Página visible, re-sincronizando estado...')
+        console.log('👁️ Página visible, re-sincronizando estado con endpoint sync...')
 
         try {
-          const response = await fetch('/api/media/status')
+          // Usar el mismo endpoint que el sync inicial para consistencia
+          const response = await fetch('/api/recordings/sync/status')
+          if (!response.ok) throw new Error('Network response was not ok')
+
           const backendStatus = await response.json()
 
-          // Crear mapa de detalles de grabación desde el backend
+          // Crear mapa de detalles de grabación desde el backend (formato sync)
           const recordingDetailsMap = new Map()
-          if (backendStatus.recordingDetails) {
-            for (const detail of backendStatus.recordingDetails) {
-              recordingDetailsMap.set(detail.cameraId, detail)
+          if (backendStatus.sessions) {
+            for (const session of backendStatus.sessions) {
+              recordingDetailsMap.set(session.cameraId, session)
             }
           }
 
           const activeBackendRecordings = new Set(
-            (backendStatus.recording || []).map(key => {
-              const match = key.match(/camera_(\d+)/)
-              return match ? parseInt(match[1]) : null
-            }).filter(id => id !== null)
+            (backendStatus.sessions || []).map(s => s.cameraId)
           )
 
-          console.log('🔄 Grabaciones activas detectadas:', Array.from(activeBackendRecordings))
+          console.log('🔄 Grabaciones activas detectadas (sync):', Array.from(activeBackendRecordings))
 
           setRecordings(prev => {
             const updated = new Map()
@@ -170,12 +200,18 @@ export function RecordingProvider({ children }) {
                 const detail = recordingDetailsMap.get(cameraId)
                 updated.set(cameraId, {
                   status: 'recording',
-                  cameraName: `Cámara ${cameraId}`,
+                  cameraName: detail?.cameraName || `Cámara ${cameraId}`,
                   startedAt: detail?.startTime ? new Date(detail.startTime) : new Date(),
                   elapsedSeconds: detail?.elapsedSeconds || 0,
                   scenarioName: detail?.scenarioName
                 })
               }
+            }
+
+            // Si el backend dice que no hay grabaciones, limpiar estado local
+            if (activeBackendRecordings.size === 0 && prev.size > 0) {
+              console.log('⚠️ Backend no tiene sesiones activas, limpiando estado local')
+              return new Map()
             }
 
             return updated
@@ -499,6 +535,7 @@ export function RecordingProvider({ children }) {
     recordings,
     globalRecordingStatus,
     initialSyncDone,
+    isSyncing,
 
     // Acciones individuales
     startRecording,

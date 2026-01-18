@@ -17,7 +17,8 @@ const StatusBar = ({
     recordingState = 'idle',
     elapsedTime = 0,
     mqttConnected = false,
-    syncStatus = { isConnected: false, isSyncing: false }
+    syncStatus = { isConnected: false, isSyncing: false },
+    isRecordingSyncing = false
 }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3">
@@ -54,18 +55,22 @@ const StatusBar = ({
 
                 {/* Timer de grabación */}
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${recordingState === 'recording'
-                        ? 'bg-red-50 dark:bg-red-900/20'
-                        : 'bg-gray-50 dark:bg-gray-700/50'
+                    ? 'bg-red-50 dark:bg-red-900/20'
+                    : 'bg-gray-50 dark:bg-gray-700/50'
                     }`}>
                     <Clock className={`w-4 h-4 ${recordingState === 'recording'
-                            ? 'text-red-500'
-                            : 'text-gray-400'
+                        ? 'text-red-500'
+                        : 'text-gray-400'
                         }`} />
                     <span className={`font-mono text-sm font-medium ${recordingState === 'recording'
-                            ? 'text-red-600 dark:text-red-400'
-                            : 'text-gray-500 dark:text-gray-400'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-gray-500 dark:text-gray-400'
                         }`}>
-                        {formatTime(elapsedTime)}
+                        {isRecordingSyncing ? (
+                            <span className="text-xs">Sincronizando...</span>
+                        ) : (
+                            formatTime(elapsedTime)
+                        )}
                     </span>
                     {recordingState === 'recording' && (
                         <span className="flex h-2 w-2">
@@ -79,8 +84,8 @@ const StatusBar = ({
                 <div className="flex items-center gap-2">
                     {/* MQTT Status */}
                     <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${mqttConnected
-                            ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                            : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                        : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
                         }`}>
                         {mqttConnected ? (
                             <Wifi className="w-3.5 h-3.5" />
@@ -92,10 +97,10 @@ const StatusBar = ({
 
                     {/* Sync Status */}
                     <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${syncStatus.isSyncing
-                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                            : syncStatus.isConnected
-                                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                                : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                        : syncStatus.isConnected
+                            ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                            : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                         }`}>
                         <RefreshCw className={`w-3.5 h-3.5 ${syncStatus.isSyncing ? 'animate-spin' : ''}`} />
                         <span className="hidden sm:inline">Sync</span>

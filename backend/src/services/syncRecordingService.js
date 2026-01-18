@@ -527,6 +527,8 @@ class SyncRecordingService extends EventEmitter {
     if (!session) return null
 
     const now = new Date()
+    const elapsedSeconds = Math.floor((now - session.masterTimestamp) / 1000)
+
     return {
       sessionId: session.sessionId,
       cameraId: session.cameraId,
@@ -534,7 +536,9 @@ class SyncRecordingService extends EventEmitter {
       scenarioName: session.scenarioName,
       status: session.status,
       masterTimestamp: session.masterTimestampISO,
-      duration: Math.floor((now - session.masterTimestamp) / 1000),
+      startTime: session.masterTimestampISO, // Alias para compatibilidad
+      duration: elapsedSeconds,
+      elapsedSeconds: elapsedSeconds, // Campo explícito para el frontend
       offsets: {
         video: session.videoOffsetMs,
         sensor: session.sensorOffsetMs
@@ -547,8 +551,14 @@ class SyncRecordingService extends EventEmitter {
    */
   getAllSessionsStatus() {
     const sessions = []
+    const now = new Date()
     for (const [cameraId] of this.activeSessions) {
-      sessions.push(this.getSessionStatus(cameraId))
+      const sessionStatus = this.getSessionStatus(cameraId)
+      if (sessionStatus) {
+        // Agregar elapsedSeconds calculado en tiempo real
+        sessionStatus.elapsedSeconds = Math.floor((now - this.activeSessions.get(cameraId).masterTimestamp) / 1000)
+        sessions.push(sessionStatus)
+      }
     }
     return sessions
   }
