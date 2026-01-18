@@ -546,6 +546,157 @@ class RecordingManager extends EventEmitter {
     console.log('🛑 Iniciando cierre graceful de RecordingManager...')
     await this.stopAll()
   }
+
+  /**
+   * Consolida todos los segmentos MP4 en un solo archivo
+   * Usa ffmpeg concat demuxer para unión sin re-codificación (instantánea)
+   * @param {string} outputDir - Directorio con los segmentos
+   * @param {Object} options - Opciones de consolidación
+   * @param {string} options.scenarioName - Nombre del escenario
+   * @param {string} options.cameraName - Nombre de la cámara
+   * @param {boolean} options.deleteSegments - Si eliminar segmentos después (default: false)
+   * @returns {Promise<{success: boolean, outputFile?: string, error?: string}>}
+   */
+  async consolidateSegments(outputDir, options = {}) {
+    const { scenarioName = '', cameraName = '', deleteSegments = false } = options
+    
+    console.log(`📦 Iniciando consolidación de segmentos en: ${outputDir}`)
+    
+    try {
+      // Verificar que el directorio existe
+      if (!fs.existsSync(outputDir)) {
+        return { success: false, error: 'Directorio no encontrado' }
+      }
+      
+      // Obtener lista de segmentos MP4 ordenados
+      const segments = fs.readdirSync(outputDir)
+        .filter(f => f.endsWith('.mp4'))
+        .sort()
+      
+      if (segments.length === 0) {
+        return { success: false, error: 'No hay segmentos para consolidar' }
+      }
+      
+      if (segments.length === 1) {
+        console.log(`📦 Solo hay 1 segmento, renombrando como completo...`)
+        const singleFile = path.join(outputDir, segments[0])
+        const consolidatedName = this._generateConsolidatedName(outputDir, scenarioName, cameraName)
+        const consolidatedPath = path.join(outputDir, consolidatedName)
+        
+        // Renombrar el único segmento
+        fs.renameSync(singleFile, consolidatedPath)
+        
+        return { 
+          success: true, 
+          outputFile: consolidatedPath,
+          segmentsCount: 1,
+          message: 'Único segmento renombrado'
+        }
+      }
+      
+      console.log(`📦 Consolidando ${segments.length} segmentos...`)
+      
+      // Crear archivo de lista para ffmpeg concat demuxer
+      const listFile = path.join(outputDir, 'concat_list.txt')
+      const listContent = segments.map(s => `file '${s}'`).join('\n')
+      fs.writeFileSync(listFile, listContent)
+      
+      // Generar nombre del archivo consolidado
+      const consolidatedName = this._generateConsolidatedName(outputDir, scenarioName, cameraName)
+      const consolidatedPath = path.join(outputDir, consolidatedName)
+      
+      // Ejecutar ffmpeg concat (sin re-codificación)
+      const result = await this._runFFmpegConcat(listFile, consolidatedPath)
+      
+      // Limpiar archivo de lista
+      fs.unlinkSync(listFile)
+      
+      if (result.success) {
+        console.log(`✅ Consolidación completada: ${consolidatedName}`)
+        
+        // Opcionalmente eliminar segmentos originales
+        if (deleteSegments) {
+          console.log(`🗑️ Eliminando ${segments.length} segmentos originales...`)
+          for (const segment of segments) {
+            const segmentPath = path.join(outputDir, segment)
+            if (fs.existsSync(segmentPath)) {
+              fs.unlinkSync(segmentPath)
+            }
+          }
+          console.log(`✅ Segmentos eliminados`)
+        }
+        
+        return {
+          success: true,
+          outputFile: consolidatedPath,
+          segmentsCount: segments.length,
+          deleteSegments
+        }
+      } else {
+        return { success: false, error: result.error }
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error consolidando segmentos:`, error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * Genera nombre para archivo consolidado
+   * @private
+   */
+  _generateConsolidatedName(outputDir, scenarioName, cameraName) {
+    const date = new Date().toISOString().split('T')[0]
+    const time = new Date().toTimeString().split(' ')[0].replace(/:/g, '-')
+    const scenario = scenarioName ? `${scenarioName.replace(/[^a-zA-Z0-9]/g, '_')}_` : ''
+    const camera = cameraName ? `${cameraName.replace(/[^a-zA-Z0-9]/g, '_')}_` : ''
+    
+    return `${scenario}${camera}${date}_${time}_COMPLETO.mp4`
+  }
+
+  /**
+   * Ejecuta ffmpeg concat demuxer
+   * @private
+   */
+  _runFFmpegConcat(listFile, outputPath) {
+    return new Promise((resolve) => {
+      const args = [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', listFile,
+        '-c', 'copy',  // No re-codificación, solo copia
+        '-movflags', '+faststart',  // Optimizar para streaming
+        outputPath
+      ]
+      
+      console.log(`🎬 Ejecutando: ffmpeg ${args.join(' ')}`)
+      
+      const ffmpeg = spawn('ffmpeg', args, {
+        cwd: path.dirname(listFile),
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+      
+      let stderr = ''
+      
+      ffmpeg.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+      
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          resolve({ success: true })
+        } else {
+          console.error(`❌ FFmpeg concat falló:`, stderr.slice(-500))
+          resolve({ success: false, error: `FFmpeg exit code: ${code}` })
+        }
+      })
+      
+      ffmpeg.on('error', (error) => {
+        resolve({ success: false, error: error.message })
+      })
+    })
+  }
 }
 
 // Singleton
