@@ -1,5 +1,6 @@
 import express from 'express'
 import mediaServerManager from '../services/mediaServer.js'
+import recordingManager from '../services/recordingManager.js'
 import sensorRecorder from '../services/sensorRecorder.js'
 import mqttRecordingService from '../services/mqttRecordingService.js'
 import fs from 'fs'
@@ -187,9 +188,20 @@ router.get('/recordings/:cameraId', (req, res) => {
     const { cameraId } = req.params
     const recordings = mediaServerManager.getRecordings(parseInt(cameraId))
     
+    // Obtener rutas de archivos que están siendo grabados actualmente
+    const activeFilePaths = recordingManager.getActiveFilePaths()
+    const activeFileSet = new Set(activeFilePaths)
+    
+    // Marcar grabaciones como bloqueadas si están siendo escritas
+    const recordingsWithLock = recordings.map(recording => ({
+      ...recording,
+      isLocked: activeFileSet.has(recording.path),
+      lockReason: activeFileSet.has(recording.path) ? 'Grabación en curso' : null
+    }))
+    
     res.json({
       cameraId: parseInt(cameraId),
-      recordings
+      recordings: recordingsWithLock
     })
   } catch (error) {
     res.status(500).json({ error: error.message })
@@ -213,7 +225,7 @@ router.get('/download/:cameraId/:filename', (req, res) => {
   }
 })
 
-// GET /api/media/recording/:cameraId/:filename - Eliminar grabación
+// DELETE /api/media/recording/:cameraId/:filename - Eliminar grabación
 router.delete('/recording/:cameraId/:filename', (req, res) => {
   try {
     const { cameraId, filename } = req.params
@@ -222,6 +234,16 @@ router.delete('/recording/:cameraId/:filename', (req, res) => {
 
     if (!recording) {
       return res.status(404).json({ error: 'Grabación no encontrada' })
+    }
+
+    // Verificar si el archivo está siendo grabado actualmente
+    const activeFilePaths = recordingManager.getActiveFilePaths()
+    if (activeFilePaths.includes(recording.path)) {
+      return res.status(423).json({ 
+        error: 'No se puede eliminar: grabación en curso',
+        isLocked: true,
+        lockReason: 'El archivo está siendo grabado actualmente. Detén la grabación primero.'
+      })
     }
 
     fs.unlinkSync(recording.path)

@@ -477,6 +477,32 @@ class RecordingManager extends EventEmitter {
   }
 
   /**
+   * Obtiene las rutas completas de todos los archivos que se están grabando actualmente
+   * @returns {string[]} Lista de rutas absolutas
+   */
+  getActiveFilePaths() {
+    const paths = []
+    this.recordings.forEach(recording => {
+      // Si el proceso está vivo, el archivo más reciente en su outputDir es el activo
+      if (recording.process && !recording.process.killed && recording.outputDir && fs.existsSync(recording.outputDir)) {
+        try {
+          const files = fs.readdirSync(recording.outputDir)
+            .filter(f => f.endsWith('.mp4'))
+            .sort()
+          
+          if (files.length > 0) {
+            // El último archivo es el que se está escribiendo actualmente
+            paths.push(path.join(recording.outputDir, files[files.length - 1]))
+          }
+        } catch (e) {
+          console.error('Error obteniendo archivos activos:', e)
+        }
+      }
+    })
+    return paths
+  }
+
+  /**
    * Obtiene estadísticas de una grabación
    */
   getRecordingStats(cameraId) {
