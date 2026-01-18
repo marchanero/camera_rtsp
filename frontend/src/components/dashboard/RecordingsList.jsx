@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { FileVideo, Film, Download, Trash2 } from 'lucide-react'
+import { FileVideo, Film, Download, Trash2, Layers } from 'lucide-react'
 import { formatFileSize, formatTime } from '../../utils/formatters'
 
 /**
@@ -17,9 +17,11 @@ const RecordingsList = ({
     sensorRecordings = [],
     onClose,
     onDownload,
-    onDelete
+    onDelete,
+    onConsolidate
 }) => {
     const [activeTab, setActiveTab] = useState('video')
+    const [consolidating, setConsolidating] = useState(false)
 
     if (!selectedCamera) return null
 
@@ -28,6 +30,21 @@ const RecordingsList = ({
         await onDelete(filename)
     }
 
+    const handleConsolidate = async () => {
+        if (!onConsolidate) return
+        if (!confirm('¿Consolidar todos los segmentos de video en un solo archivo?')) return
+
+        setConsolidating(true)
+        try {
+            await onConsolidate(selectedCamera.id)
+        } finally {
+            setConsolidating(false)
+        }
+    }
+
+    // Verificar si hay múltiples segmentos para mostrar botón de consolidar
+    const hasMultipleSegments = videoRecordings.filter(r => !r.filename.includes('_COMPLETO')).length > 1
+
     return (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden animate-fade-in">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -35,12 +52,28 @@ const RecordingsList = ({
                     <FileVideo className="w-4 h-4 text-orange-500" />
                     Grabaciones - {selectedCamera.name}
                 </h3>
-                <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                    ×
-                </button>
+                <div className="flex items-center gap-2">
+                    {hasMultipleSegments && onConsolidate && (
+                        <button
+                            onClick={handleConsolidate}
+                            disabled={consolidating}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${consolidating
+                                    ? 'bg-gray-200 text-gray-500 cursor-wait'
+                                    : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30'
+                                }`}
+                            title="Unir todos los segmentos en un solo archivo"
+                        >
+                            <Layers className="w-4 h-4" />
+                            {consolidating ? 'Consolidando...' : 'Consolidar'}
+                        </button>
+                    )}
+                    <button
+                        onClick={onClose}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl"
+                    >
+                        ×
+                    </button>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -48,8 +81,8 @@ const RecordingsList = ({
                 <button
                     onClick={() => setActiveTab('video')}
                     className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'video'
-                            ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                        ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                         }`}
                 >
                     <div className="flex items-center justify-center gap-2">
@@ -60,8 +93,8 @@ const RecordingsList = ({
                 <button
                     onClick={() => setActiveTab('sensors')}
                     className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'sensors'
-                            ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                        ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                         }`}
                 >
                     <div className="flex items-center justify-center gap-2">

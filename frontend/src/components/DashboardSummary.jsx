@@ -515,6 +515,41 @@ const DashboardSummary = () => {
               }}
               onDownload={handleDownloadRecording}
               onDelete={handleDeleteRecording}
+              onConsolidate={async (cameraId) => {
+                try {
+                  // Obtener la ruta del directorio de grabaciones
+                  const firstRecording = cameraRecordings.find(r => !r.filename.includes('_COMPLETO'))
+                  if (!firstRecording || !firstRecording.path) {
+                    toast.error('No se encontraron segmentos para consolidar')
+                    return
+                  }
+
+                  // Extraer el directorio del path
+                  const recordingPath = firstRecording.path.substring(0, firstRecording.path.lastIndexOf('/'))
+
+                  const response = await fetch('/api/recordings/consolidate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      recordingPath,
+                      cameraName: selectedCamera.name,
+                      scenarioName: activeScenario?.name
+                    })
+                  })
+
+                  const result = await response.json()
+
+                  if (result.success) {
+                    toast.success(`Consolidación completada: ${result.segmentsCount} segmentos unidos`)
+                    await loadRecordings(cameraId)
+                  } else {
+                    toast.error(`Error: ${result.error}`)
+                  }
+                } catch (error) {
+                  console.error('Error consolidando:', error)
+                  toast.error('Error al consolidar los segmentos')
+                }
+              }}
             />
           )}
         </div>
