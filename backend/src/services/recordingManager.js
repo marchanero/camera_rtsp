@@ -32,7 +32,7 @@ class RecordingManager extends EventEmitter {
       
       // Monitoreo de salud
       healthCheckInterval: 30000, // Verificar cada 30 segundos
-      staleTimeout: 60000,        // Considerar muerto si no hay actividad en 60s
+      staleTimeout: 300000,        // 5 minutos sin actividad - más tolerante para streams estables
       
       // Segmentación optimizada para memoria
       // Segmentación optimizada para memoria
@@ -93,6 +93,27 @@ class RecordingManager extends EventEmitter {
         console.log(`⚠️ Grabación ${key} - proceso muerto`)
         this.handleRecordingFailure(key, recording, 'Proceso terminado inesperadamente')
         return
+      }
+      
+      // Verificar actividad secundaria: tamaño del archivo
+      // Si el archivo sigue creciendo, la grabación está activa
+      try {
+        if (recording.outputDir && fs.existsSync(recording.outputDir)) {
+          const files = fs.readdirSync(recording.outputDir).filter(f => f.endsWith('.mp4'))
+          if (files.length > 0) {
+            const latestFile = path.join(recording.outputDir, files[files.length - 1])
+            if (fs.existsSync(latestFile)) {
+              const currentSize = fs.statSync(latestFile).size
+              if (recording.lastFileSize !== undefined && currentSize > recording.lastFileSize) {
+                // El archivo sigue creciendo, actualizar actividad
+                recording.lastActivity = now
+              }
+              recording.lastFileSize = currentSize
+            }
+          }
+        }
+      } catch (fsError) {
+        // Ignorar errores de filesystem, usar solo lastActivity de stderr
       }
       
       // Verificar última actividad
