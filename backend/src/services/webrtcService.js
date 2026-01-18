@@ -246,7 +246,7 @@ class WebRTCService {
       '-c:v', 'copy',
       '-c:a', 'aac',
       '-f', 'segment',
-      '-segment_time', '3600', // 1 hora por archivo
+      '-segment_time', '1200', // 20 minutos por archivo
       '-segment_format', 'mp4',
       '-reset_timestamps', '1',
       '-strftime', '1',
