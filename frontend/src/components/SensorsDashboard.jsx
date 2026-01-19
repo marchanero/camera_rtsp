@@ -25,7 +25,8 @@ import {
   Volume2,
   Sun,
   Gauge,
-  Zap
+  Zap,
+  Settings
 } from 'lucide-react'
 
 function SensorsDashboard() {
@@ -210,7 +211,8 @@ function SensorsDashboard() {
       'gases/so2': Activity,
       'gases/o3': Activity,
       'gases/co': Activity,
-      emotibit: Heart
+      emotibit: Heart,
+      mota: Settings
     }
     return icons[type] || Radio
   }

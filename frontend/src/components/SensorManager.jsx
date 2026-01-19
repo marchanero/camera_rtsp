@@ -56,7 +56,14 @@ const SensorManager = () => {
     pressure: { label: 'Presión', icon: Gauge, color: 'indigo', defaultUnit: 'hPa', defaultVariables: ['value'] },
     noise: { label: 'Ruido', icon: Volume2, color: 'purple', defaultUnit: 'dB', defaultVariables: ['value'] },
     light: { label: 'Luz', icon: Sun, color: 'amber', defaultUnit: 'lux', defaultVariables: ['value'] },
-    voc: { label: 'VOC', icon: Activity, color: 'teal', defaultUnit: 'ppb', defaultVariables: ['value'] }
+    voc: { label: 'VOC', icon: Activity, color: 'teal', defaultUnit: 'ppb', defaultVariables: ['voc'] },
+    mota: {
+      label: 'MOTA (Multisensor)',
+      icon: Settings,
+      color: 'indigo',
+      defaultUnit: '',
+      defaultVariables: ['temperatura', 'humedad', 'luz', 'ruido_dbfs', 'aqi', 'tvoc', 'eco2', 'bmp_temperatura', 'bmp_presion', 'bmp_altitud']
+    }
   }
 
   const getColorClasses = (color) => {
@@ -93,12 +100,18 @@ const SensorManager = () => {
 
   const handleTypeChange = (type) => {
     const typeInfo = SENSOR_TYPES[type]
-    setFormData(prev => ({
-      ...prev,
-      type,
-      unit: typeInfo.defaultUnit,
-      variables: [...typeInfo.defaultVariables]
-    }))
+
+    setFormData(prev => {
+      // Si el sensor ya tiene variables, las combinamos evitando duplicados
+      const newVariables = [...new Set([...prev.variables, ...typeInfo.defaultVariables])]
+
+      return {
+        ...prev,
+        type: prev.type === 'emotibit' || prev.type === 'mota' ? prev.type : type, // Mantener tipo principal si es especial
+        unit: prev.unit || typeInfo.defaultUnit,
+        variables: newVariables
+      }
+    })
   }
 
   const handleGenerateTopicBase = () => {
@@ -462,21 +475,24 @@ const SensorManager = () => {
                   <Radio className="w-4 h-4" />
                   Tipo de Sensor *
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                   {Object.entries(SENSOR_TYPES).map(([key, info]) => {
                     const IconComp = info.icon
+                    const isSelected = formData.type === key
                     return (
                       <button
                         key={key}
                         type="button"
                         onClick={() => handleTypeChange(key)}
-                        className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${formData.type === key
+                        className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${isSelected
                           ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
                           : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
                           }`}
                       >
-                        <IconComp className={`w-5 h-5 ${formData.type === key ? 'text-emerald-500' : 'text-gray-500'}`} />
-                        <span className={`text-xs font-medium ${formData.type === key ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-gray-100 dark:bg-gray-700'}`}>
+                          <IconComp className={`w-5 h-5 ${isSelected ? 'text-emerald-600' : 'text-gray-500'}`} />
+                        </div>
+                        <span className={`text-[10px] font-bold text-center leading-none ${isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400'}`}>
                           {info.label}
                         </span>
                       </button>
