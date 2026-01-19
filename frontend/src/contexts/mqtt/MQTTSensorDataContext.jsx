@@ -11,7 +11,7 @@ const MQTTSensorDataContext = createContext()
  * - Topic pattern matching
  * - Data cleanup (stale data removal)
  */
-export function MQTTSensorDataProvider({ children, mqttMessages }) {
+export function MQTTSensorDataProvider({ children, mqttMessages, reloadTopics }) {
     const [sensorData, setSensorData] = useState(new Map())
     const [cameraStatus, setCameraStatus] = useState({})
 
@@ -41,15 +41,24 @@ export function MQTTSensorDataProvider({ children, mqttMessages }) {
 
         const handleSensorMessage = (topic, payload) => {
             try {
-                // Parse sensor data
-                if (matchTopic(topic, 'camera_rtsp/sensors/#') ||
+                // Parse sensor data - accept any topic that looks like sensor data
+                // Patterns: camera_rtsp/sensors/*, */emotibit/*, */sensor/*, */co2/*, */humidity/*, */temperature/*
+                const isSensorTopic =
+                    matchTopic(topic, 'camera_rtsp/sensors/#') ||
                     topic.includes('/emotibit/') ||
+                    topic.includes('/sensor/') ||  // Generic sensor pattern
                     topic.includes('/co2/') ||
                     topic.includes('/humidity/') ||
-                    topic.includes('/temperature/')) {
+                    topic.includes('/temperature/') ||
+                    topic.includes('/pressure/') ||
+                    topic.includes('/light/') ||
+                    topic.includes('/noise/')
 
+                if (isSensorTopic) {
                     const data = JSON.parse(payload)
-                    const sensorId = data.sensorId || data.sensor_id || topic
+                    // Try multiple ways to get sensorId
+                    const sensorId = data.sensorId || data.sensor_id || data.device_id ||
+                        topic.split('/').slice(-2, -1)[0] || topic
 
                     setSensorData(prev => {
                         const newMap = new Map(prev)
@@ -150,7 +159,8 @@ export function MQTTSensorDataProvider({ children, mqttMessages }) {
         getSensor,
         getActiveSensors,
         clearSensorData,
-        matchTopic
+        matchTopic,
+        reloadTopics // Expose reload function for components
     }
 
     return (

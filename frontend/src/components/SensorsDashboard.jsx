@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useMQTT } from '../contexts/MQTTContext'
 import { useScenario } from '../contexts/ScenarioContext'
 import { useEmqxData } from '../hooks/useEmqxData'
@@ -46,6 +46,9 @@ function SensorsDashboard() {
   // Obtener escenario activo y sus sensores
   const { activeScenario, getActiveSensors } = useScenario()
 
+  // Cache for previous sensor data to prevent flickering
+  const prevSensorDataRef = React.useRef(new Map())
+
   // Sensores del escenario activo con sus datos en tiempo real
   const scenarioSensors = useMemo(() => {
     if (!activeScenario) return []
@@ -53,14 +56,18 @@ function SensorsDashboard() {
 
     // Helper: buscar datos MQTT para un sensor
     const findMqttData = (sensor) => {
-      // 1. Buscar por sensorId exacto
+      // 1. Buscar por sensorId exacto en datos actuales
       if (sensorData.has(sensor.sensorId)) {
-        return sensorData.get(sensor.sensorId)
+        const data = sensorData.get(sensor.sensorId)
+        // Cache the data for future use
+        prevSensorDataRef.current.set(sensor.sensorId, data)
+        return data
       }
 
       // 2. Buscar por coincidencia de tipo de sensor
       for (const [key, data] of sensorData.entries()) {
         if (data.type === sensor.type) {
+          prevSensorDataRef.current.set(sensor.sensorId, data)
           return data
         }
       }
@@ -69,9 +76,15 @@ function SensorsDashboard() {
       if (sensor.topicBase) {
         for (const [key, data] of sensorData.entries()) {
           if (data.topic && data.topic.startsWith(sensor.topicBase)) {
+            prevSensorDataRef.current.set(sensor.sensorId, data)
             return data
           }
         }
+      }
+
+      // 4. FALLBACK: Use cached previous data to prevent flickering
+      if (prevSensorDataRef.current.has(sensor.sensorId)) {
+        return prevSensorDataRef.current.get(sensor.sensorId)
       }
 
       return null
@@ -409,7 +422,7 @@ function SensorsDashboard() {
                 {scenarioSensors.map((sensor) => (
                   <SensorErrorBoundary key={sensor.id}>
                     <div
-                      className={`relative rounded-lg p-3 min-h-[110px] flex flex-col justify-between ${sensor.isOnline
+                      className={`relative rounded-lg p-3 min-h-[220px] h-fit flex flex-col justify-between transition-all duration-150 ${sensor.isOnline
                         ? 'bg-gray-50 dark:bg-gray-700/50 border border-emerald-200 dark:border-emerald-800/50'
                         : 'bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-700 opacity-60'
                         }`}
@@ -443,7 +456,7 @@ function SensorsDashboard() {
                         : 'text-gray-400'
                         }`}>
                         {sensor.isOnline && sensor.liveData
-                          ? <SensorValueDisplay value={sensor.liveData.value} unit={sensor.unit} />
+                          ? <SensorValueDisplay data={sensor.liveData} sensor={sensor} />
                           : <span className="text-xs font-normal">--</span>
                         }
                       </div>
@@ -525,7 +538,7 @@ function SensorsDashboard() {
 
                       {/* Value */}
                       <div className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">
-                        <SensorValueDisplay value={data?.value} unit={sensor.unit} />
+                        <SensorValueDisplay data={data} sensor={sensor} />
                       </div>
                     </div>
                   )
@@ -580,47 +593,131 @@ class SensorErrorBoundary extends React.Component {
 }
 
 export default SensorsDashboard
-// Helper component to display sensor values safely (handles numbers and objects/vectors)
-function SensorValueDisplay({ value, unit }) {
-  // Helper to safely format any value to a string
+
+// Memoized sensor value display - only re-renders when data actually changes
+const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
+  const unit = sensor?.unit || ''
+
+  // Extract actual value from different data formats
+  const extractValue = (rawData) => {
+    if (!rawData) return null
+
+    // Format 1: { value: X } - wrapped value
+    if (rawData.value !== undefined) return rawData.value
+
+    // Format 2: { data: { value: X } } - doubly wrapped
+    if (rawData.data?.value !== undefined) return rawData.data.value
+
+    // Format 3: Direct sensor values (temperatura, humedad, etc)
+    // Return the whole object for multi-value display
+    const dataKeys = Object.keys(rawData).filter(k =>
+      !['sensorId', 'sensor_id', 'timestamp', 'topic', 'type', 'location', 'name', 'recording'].includes(k)
+    )
+
+    if (dataKeys.length === 1) {
+      // Single value - return it directly
+      return rawData[dataKeys[0]]
+    } else if (dataKeys.length > 1) {
+      // Multiple values - return object with just sensor data
+      return dataKeys.reduce((obj, key) => ({ ...obj, [key]: rawData[key] }), {})
+    }
+
+    return null
+  }
+
+  const value = extractValue(data)
+
+  // Helper to format individual values
   const formatVal = (val) => {
     if (val === null || val === undefined) return '--'
     if (typeof val === 'number') return val.toFixed(2)
-    if (typeof val === 'object') {
-      // Handle nested objects by converting to string representation
-      if ('x' in val && 'y' in val && 'z' in val) {
-        return `x:${formatVal(val.x)} y:${formatVal(val.y)} z:${formatVal(val.z)}`
-      }
-      return JSON.stringify(val)
-    }
     return String(val)
   }
 
-  if (value === null || value === undefined) return <span>--</span>;
+  // Label mapping for Spanish-friendly display
+  const labelMap = {
+    temperatura: '🌡️',
+    humedad: '💧',
+    aqi: '🌬️',
+    tvoc: '🧪',
+    eco2: '☁️',
+    bmp_temperatura: '🔥',
+    bmp_presion: '🎚️',
+    bmp_altitud: '⛰️',
+    luz: '☀️',
+    ruido_dbfs: '🔊',
+    heart_rate: '❤️',
+    eda: '⚡',
+    ppg: '📈',
+    hrv: '💚',
+    temperature: '🌡️',
+    accel: '📐',
+    gyro: '🔄',
+    mag: '🧲'
+  }
 
-  // Si es un objeto (vector X,Y,Z como acelerómetro)
-  if (typeof value === 'object') {
+  // Unit mapping for each sensor type
+  const unitMap = {
+    temperatura: '°C',
+    humedad: '%',
+    aqi: '',
+    tvoc: 'ppb',
+    eco2: 'ppm',
+    bmp_temperatura: '°C',
+    bmp_presion: 'hPa',
+    bmp_altitud: 'm',
+    luz: 'lux',
+    ruido_dbfs: 'dB',
+    heart_rate: 'bpm',
+    eda: 'μS',
+    ppg: '',
+    hrv: 'ms',
+    temperature: '°C',
+    accel: 'g',
+    gyro: '°/s',
+    mag: 'μT'
+  }
+
+  if (value === null || value === undefined) return <span>--</span>
+
+  // If it's an object with multiple sensor values
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value)
+
+    // Limit display and show most important values first
+    const priorityKeys = ['temperatura', 'humedad', 'aqi', 'luz', 'ruido_dbfs', 'heart_rate', 'eda']
+    const sortedEntries = entries.sort((a, b) => {
+      const aIdx = priorityKeys.indexOf(a[0])
+      const bIdx = priorityKeys.indexOf(b[0])
+      if (aIdx === -1 && bIdx === -1) return 0
+      if (aIdx === -1) return 1
+      if (bIdx === -1) return -1
+      return aIdx - bIdx
+    })
+
     return (
-      <div className="flex flex-col text-xs font-mono font-normal">
-        {Object.entries(value).map(([key, val]) => (
-          <span key={key}>
-            <span className="text-gray-500 uppercase">{key}:</span> {formatVal(val)}
-            {unit && <span className="text-gray-400 ml-0.5">{unit}</span>}
-          </span>
+      <div className="flex flex-col gap-0.5 text-xs font-normal max-h-48 overflow-y-auto w-full">
+        {sortedEntries.map(([key, val]) => (
+          <div key={key} className="flex items-center gap-1 whitespace-nowrap">
+            <span className="w-4 flex-shrink-0">{labelMap[key] || '📊'}</span>
+            <span className="text-gray-600 dark:text-gray-400 capitalize truncate max-w-[80px]">{key.replace(/_/g, ' ')}:</span>
+            <span className="font-medium text-gray-900 dark:text-white tabular-nums">{formatVal(val)}</span>
+            <span className="text-gray-400 text-[10px]">{unitMap[key] || ''}</span>
+          </div>
         ))}
       </div>
     )
   }
 
-  // Si es un número escalar
+  // If it's a scalar number
   if (typeof value === 'number') {
     return (
-      <span className="tabular-nums">
-        {value.toFixed(1)} <span className="text-xs font-normal text-gray-500">{unit || ''}</span>
+      <span className="tabular-nums whitespace-nowrap">
+        {value.toFixed(1)} <span className="text-xs font-normal text-gray-500">{unit}</span>
       </span>
     )
   }
 
-  // Fallback para strings u otros tipos
+  // Fallback for strings or other types
   return <span>{String(value)}</span>
-}
+})

@@ -6,6 +6,8 @@ const router = express.Router()
 // MQTT Connection
 router.get('/status', mqttController.getStatus)
 router.get('/config', mqttController.getConfig)
+router.get('/subscriptions', mqttController.getSubscriptions.bind(mqttController))
+router.get('/sensor-topics', mqttController.getSensorTopics.bind(mqttController))
 router.post('/connect', mqttController.connect)
 router.post('/disconnect', mqttController.disconnect)
 router.post('/publish', mqttController.publish)

@@ -240,12 +240,24 @@ class MQTTController {
 
   /**
    * PUT /api/sensors/:id
-   * Actualizar sensor
+   * Actualizar sensor (con sincronización de suscripciones MQTT)
    */
   async updateSensor(req, res) {
     try {
       const { id } = req.params
-      const { name, location, isActive, config } = req.body
+      const { name, location, isActive, config, topicBase, deviceId, unit, variables } = req.body
+
+      // Obtener el sensor actual para comparar topicBase
+      const existingSensor = await prisma.sensor.findUnique({
+        where: { id: parseInt(id) }
+      })
+
+      if (!existingSensor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Sensor no encontrado'
+        })
+      }
 
       const sensor = await prisma.sensor.update({
         where: { id: parseInt(id) },
@@ -253,12 +265,41 @@ class MQTTController {
           ...(name && { name }),
           ...(location !== undefined && { location }),
           ...(isActive !== undefined && { isActive }),
-          ...(config && { config: JSON.stringify(config) })
+          ...(config && { config: JSON.stringify(config) }),
+          ...(topicBase !== undefined && { topicBase }),
+          ...(deviceId !== undefined && { deviceId }),
+          ...(unit !== undefined && { unit }),
+          ...(variables && { variables: Array.isArray(variables) ? JSON.stringify(variables) : variables })
         }
       })
 
+      // Si cambió el topicBase, actualizar suscripciones MQTT
+      if (topicBase !== undefined && existingSensor.topicBase !== topicBase) {
+        // Desuscribir del topic anterior
+        if (existingSensor.topicBase && mqttService.isConnected) {
+          const oldTopic = `${existingSensor.topicBase}/#`
+          try {
+            await mqttService.unsubscribe(oldTopic)
+            console.log(`🔄 MQTT: Desuscrito de topic anterior: ${oldTopic}`)
+          } catch (err) {
+            console.warn(`⚠️ MQTT: Error desuscribiendo de ${oldTopic}:`, err.message)
+          }
+        }
+        // Suscribir al nuevo topic
+        if (topicBase && mqttService.isConnected) {
+          const newTopic = `${topicBase}/#`
+          try {
+            await mqttService.subscribe(newTopic)
+            console.log(`✅ MQTT: Suscrito a nuevo topic: ${newTopic}`)
+          } catch (err) {
+            console.warn(`⚠️ MQTT: Error suscribiendo a ${newTopic}:`, err.message)
+          }
+        }
+      }
+
       res.json({
         success: true,
+        message: 'Sensor actualizado correctamente',
         data: sensor
       })
     } catch (error) {
@@ -534,6 +575,64 @@ class MQTTController {
         })
       }
 
+      res.status(500).json({
+        success: false,
+        error: error.message
+      })
+    }
+  }
+
+  /**
+   * GET /api/mqtt/subscriptions
+   * Obtener suscripciones activas
+   */
+  async getSubscriptions(req, res) {
+    try {
+      const subscriptions = Array.from(mqttService.subscriptions.keys())
+      res.json({
+        success: true,
+        data: subscriptions,
+        count: subscriptions.length
+      })
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      })
+    }
+  }
+
+  /**
+   * GET /api/mqtt/sensor-topics
+   * Obtener topics de sensores activos para suscripción dinámica
+   */
+  async getSensorTopics(req, res) {
+    try {
+      const sensors = await prisma.sensor.findMany({
+        where: { isActive: true },
+        select: { 
+          sensorId: true, 
+          topicBase: true, 
+          type: true,
+          name: true 
+        }
+      })
+
+      const topics = sensors
+        .filter(s => s.topicBase && s.topicBase.trim() !== '')
+        .map(s => ({
+          sensorId: s.sensorId,
+          name: s.name,
+          topic: `${s.topicBase}/#`,
+          type: s.type
+        }))
+
+      res.json({
+        success: true,
+        data: topics,
+        count: topics.length
+      })
+    } catch (error) {
       res.status(500).json({
         success: false,
         error: error.message
