@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { HardDrive, Activity, Gauge, Radio } from 'lucide-react'
 import { formatBytes } from '../../utils/formatters'
 
@@ -17,6 +17,20 @@ const SystemStats = ({
     activeSensors = [],
     stats = {}
 }) => {
+    // Cache for previous sensors to prevent flickering
+    const prevSensorsRef = useRef([])
+    const [displaySensors, setDisplaySensors] = useState([])
+
+    // Update display sensors only when we have actual data
+    useEffect(() => {
+        if (activeSensors.length > 0) {
+            prevSensorsRef.current = activeSensors
+            setDisplaySensors(activeSensors)
+        } else if (prevSensorsRef.current.length > 0) {
+            // Keep previous sensors if new data is empty
+            setDisplaySensors(prevSensorsRef.current)
+        }
+    }, [activeSensors])
     /**
      * Renders disk info panel
      */
@@ -93,15 +107,56 @@ const SystemStats = ({
                 </div>
             </div>
 
-            {/* Active Sensors */}
-            {activeSensors.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                        <Radio className="w-4 h-4 text-green-500" />
-                        Sensores Activos
-                    </h3>
-                    <div className="space-y-2">
-                        {activeSensors.map((sensor) => {
+            {/* System Stats - Now after storage */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-orange-500" />
+                    Estadísticas
+                </h3>
+                <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Cámaras activas</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                            {stats.activeCameras || 0}/{stats.totalCameras || 0}
+                        </span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Grabaciones</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                            {stats.recordingCameras || 0}
+                        </span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Sensores</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                            {stats.activeSensors || 0}/{stats.totalSensors || 0}
+                        </span>
+                    </div>
+                    {stats.messagesPerSecond !== undefined && (
+                        <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">Msg/s</span>
+                            <span className="font-medium text-gray-900 dark:text-white">
+                                {stats.messagesPerSecond.toFixed(1)}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Active Sensors - Now at the bottom */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-green-500" />
+                    Sensores Activos
+                    {displaySensors.length > 0 && (
+                        <span className="ml-auto text-xs font-normal text-gray-500 dark:text-gray-400">
+                            {displaySensors.length}
+                        </span>
+                    )}
+                </h3>
+                <div className="space-y-2">
+                    {displaySensors.length > 0 ? (
+                        displaySensors.map((sensor) => {
                             // Format sensor value - handle objects and primitives
                             const formatValue = (val) => {
                                 if (val === undefined || val === null) return '-'
@@ -133,42 +188,10 @@ const SystemStats = ({
                                     </span>
                                 </div>
                             )
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* System Stats */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-orange-500" />
-                    Estadísticas
-                </h3>
-                <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Cámaras activas</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                            {stats.activeCameras || 0}/{stats.totalCameras || 0}
-                        </span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Grabaciones</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                            {stats.recordingCameras || 0}
-                        </span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Sensores</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                            {stats.activeSensors || 0}/{stats.totalSensors || 0}
-                        </span>
-                    </div>
-                    {stats.messagesPerSecond !== undefined && (
-                        <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Msg/s</span>
-                            <span className="font-medium text-gray-900 dark:text-white">
-                                {stats.messagesPerSecond.toFixed(1)}
-                            </span>
+                        })
+                    ) : (
+                        <div className="text-center py-2 text-xs text-gray-400 dark:text-gray-500">
+                            Esperando datos de sensores...
                         </div>
                     )}
                 </div>

@@ -441,10 +441,11 @@ const DashboardSummary = () => {
 
     Array.from(sensorData.entries()).forEach(([sensorId, data]) => {
       const isRecent = Date.now() - new Date(data.timestamp).getTime() < 10000
+      // Show ONLY sensors assigned to the active scenario
       const isInScenario = scenarioSensorIds.includes(sensorId) ||
         scenarioSensorIds.includes(String(sensorId))
 
-      if (isRecent && !isInScenario) {
+      if (isRecent && isInScenario) {
         uniqueSensors.set(sensorId, {
           id: sensorId,
           type: data.type || sensorId,
@@ -456,7 +457,7 @@ const DashboardSummary = () => {
     })
 
     return Array.from(uniqueSensors.values())
-      .sort((a, b) => a.type.localeCompare(b.type))
+      .sort((a, b) => (a.type || '').localeCompare(b.type || ''))
       .slice(0, 5)
   }, [sensorData, scenarioSensorIds])
 

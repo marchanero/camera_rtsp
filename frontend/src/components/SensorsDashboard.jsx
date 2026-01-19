@@ -107,6 +107,9 @@ function SensorsDashboard() {
     fetchSensors()
   }, [])
 
+  // Cache for active sensors to prevent flickering
+  const prevActiveSensorsRef = React.useRef([])
+
   // Filtrar sensores activos basado en clientes EMQX y datos MQTT recibidos
   useEffect(() => {
     // Si hay datos MQTT, mostrar todos los sensores que tienen datos
@@ -118,6 +121,8 @@ function SensorsDashboard() {
       isActive: true,
       data: data
     }))
+
+    let newActiveSensors = []
 
     // Combinar con sensores de la BD si existen
     if (sensors.length > 0) {
@@ -139,13 +144,23 @@ function SensorsDashboard() {
         }
       }).filter(s => s.hasData || s.hasPublisher)
 
-      setActiveSensors([...combinedSensors, ...sensorsFromMQTT.filter(
+      newActiveSensors = [...combinedSensors, ...sensorsFromMQTT.filter(
         mqtt => !combinedSensors.some(s => s.sensorId === mqtt.sensorId)
-      )])
+      )]
     } else {
       // Si no hay sensores en BD, mostrar solo los de MQTT
-      setActiveSensors(sensorsFromMQTT)
+      newActiveSensors = sensorsFromMQTT
     }
+
+    // Only update if we have sensors, otherwise keep previous to prevent flickering
+    if (newActiveSensors.length > 0) {
+      prevActiveSensorsRef.current = newActiveSensors
+      setActiveSensors(newActiveSensors)
+    } else if (prevActiveSensorsRef.current.length > 0) {
+      // Keep previous sensors if new calculation is empty (prevents flickering)
+      setActiveSensors(prevActiveSensorsRef.current)
+    }
+
     setLoading(false)
   }, [sensors, sensorData, sensorClients])
 
