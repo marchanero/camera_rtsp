@@ -1,41 +1,135 @@
 /**
- * Heart Rate Calculator using PPG Peak Detection
+ * Heart Rate Calculator using PPG Peak Detection v2
  * 
- * Implements a simple but robust peak detection algorithm
- * to calculate Heart Rate (BPM) and Inter-Beat Interval (IBI)
- * from PPG (photoplethysmography) data.
- * 
- * This runs in the frontend as an alternative/complement to
- * the EmotiBit's built-in HR calculation.
+ * Improved algorithm with:
+ * - Better signal filtering (moving average + derivative)
+ * - More robust peak detection
+ * - IBI outlier rejection
+ * - Heavier smoothing for stable output
  */
 
-// Configuration
+// Configuration - tuned for EmotiBit PPG at 75Hz
 const CONFIG = {
   // PPG sample rate from EmotiBit
   SAMPLE_RATE_HZ: 75,
   
-  // Peak detection parameters
-  MIN_PEAK_DISTANCE_MS: 300,   // Minimum time between peaks (200 BPM max)
-  MAX_PEAK_DISTANCE_MS: 2000,  // Maximum time between peaks (30 BPM min)
-  
-  // Valid HR range
+  // Valid heart rate range (physiological limits)
   MIN_HR_BPM: 40,
-  MAX_HR_BPM: 200,
+  MAX_HR_BPM: 110,   // Further reduced - we'll be conservative
   
-  // Smoothing
-  HR_SMOOTHING_FACTOR: 0.3,   // Lower = more smoothing
-  IBI_BUFFER_SIZE: 5,         // Number of IBIs to average
+  // Corresponding IBI limits  
+  MIN_IBI_MS: 545,   // 110 BPM - only accept slower beats initially
+  MAX_IBI_MS: 1500,  // 40 BPM
   
-  // Threshold for peak detection (adaptive)
-  PEAK_THRESHOLD_FACTOR: 0.6, // Peak must be > mean + factor * (max - mean)
+  // Signal processing
+  MOVING_AVG_WINDOW: 9,       // More smoothing
+  DERIVATIVE_WINDOW: 7,       // Larger window
   
-  // Signal quality
-  MIN_SAMPLES_FOR_CALCULATION: 50,  // Need at least this many samples
+  // Peak detection - VERY conservative to avoid false peaks
+  REFRACTORY_PERIOD_MS: 550,  // 550ms minimum between peaks (~109 BPM max)
+  PEAK_PROMINENCE_FACTOR: 0.7, // Peak must be 70% above baseline
+  
+  // IBI validation - strict
+  IBI_CHANGE_THRESHOLD: 0.15, // Only 15% variation allowed
+  IBI_HISTORY_SIZE: 12,       // More history for stable median
+  
+  // Output smoothing - very heavy
+  HR_SMOOTHING_FACTOR: 0.08,  // Very slow changes
+  MIN_PEAKS_FOR_OUTPUT: 5,    // Need 5 valid peaks
+  
+  // Buffer size
+  SIGNAL_BUFFER_SECONDS: 10,  // 10 seconds of data
+}
+
+/**
+ * Simple moving average filter
+ */
+function movingAverage(data, windowSize) {
+  const result = []
+  for (let i = 0; i < data.length; i++) {
+    let sum = 0
+    let count = 0
+    for (let j = Math.max(0, i - windowSize + 1); j <= i; j++) {
+      sum += data[j]
+      count++
+    }
+    result.push(sum / count)
+  }
+  return result
+}
+
+/**
+ * Calculate derivative (rate of change)
+ */
+function derivative(data, windowSize = 1) {
+  const result = []
+  for (let i = 0; i < data.length; i++) {
+    if (i < windowSize) {
+      result.push(0)
+    } else {
+      result.push(data[i] - data[i - windowSize])
+    }
+  }
+  return result
+}
+
+/**
+ * Find peaks in signal using derivative zero-crossing
+ */
+function findPeaks(signal, derivative, minDistance, threshold) {
+  const peaks = []
+  
+  for (let i = 2; i < signal.length - 1; i++) {
+    // Peak: derivative goes from positive to negative
+    if (derivative[i - 1] > 0 && derivative[i] <= 0) {
+      // Check if peak is above threshold
+      if (signal[i] > threshold) {
+        // Check minimum distance from last peak
+        if (peaks.length === 0 || (i - peaks[peaks.length - 1]) >= minDistance) {
+          peaks.push(i)
+        }
+      }
+    }
+  }
+  
+  return peaks
+}
+
+/**
+ * Validate IBI against history
+ */
+function isValidIBI(newIBI, ibiHistory) {
+  // Check physiological limits
+  if (newIBI < CONFIG.MIN_IBI_MS || newIBI > CONFIG.MAX_IBI_MS) {
+    return false
+  }
+  
+  // If no history, accept
+  if (ibiHistory.length === 0) {
+    return true
+  }
+  
+  // Check against median of recent IBIs
+  const sorted = [...ibiHistory].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  
+  // Allow some variation but reject outliers
+  const change = Math.abs(newIBI - median) / median
+  return change <= CONFIG.IBI_CHANGE_THRESHOLD
+}
+
+/**
+ * Calculate median of array
+ */
+function median(arr) {
+  if (arr.length === 0) return 0
+  const sorted = [...arr].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
 /**
  * HeartRateCalculator class
- * Maintains state for continuous HR calculation from PPG stream
  */
 class HeartRateCalculator {
   constructor() {
@@ -43,36 +137,30 @@ class HeartRateCalculator {
   }
   
   reset() {
-    // Signal buffer for peak detection
+    // Signal buffer
     this.signalBuffer = []
-    this.maxBufferSize = CONFIG.SAMPLE_RATE_HZ * 5  // 5 seconds of data
+    this.maxBufferSize = CONFIG.SAMPLE_RATE_HZ * CONFIG.SIGNAL_BUFFER_SECONDS
     
-    // Peak detection state
-    this.lastPeakIndex = -1
-    this.lastPeakTime = 0
-    
-    // IBI history for averaging
+    // IBI history (validated IBIs only)
     this.ibiHistory = []
     
-    // Calculated values
+    // Output values
     this.currentHR = 0
     this.currentIBI = 0
-    this.rawHR = 0
+    this.smoothedHR = 0
+    
+    // Quality metrics
+    this.signalQuality = 0
+    this.validPeakCount = 0
+    this.totalPeakCount = 0
     
     // Timestamps
-    this.lastUpdateTime = 0
+    this.lastPeakTime = 0
     this.sampleCount = 0
-    
-    // Signal quality metrics
-    this.signalQuality = 0  // 0-100%
-    this.peakCount = 0
   }
   
   /**
-   * Process new PPG samples and calculate HR/IBI
-   * @param {number[]} samples - Array of PPG values (typically IR or Green channel)
-   * @param {number} timestamp - Timestamp of the last sample (ms)
-   * @returns {{ hr: number, ibi: number, quality: number, rawHr: number }}
+   * Process new PPG samples
    */
   processSamples(samples, timestamp) {
     if (!samples || samples.length === 0) {
@@ -85,167 +173,120 @@ class HeartRateCalculator {
       this.sampleCount++
     }
     
-    // Keep buffer size limited
+    // Trim buffer
     while (this.signalBuffer.length > this.maxBufferSize) {
       this.signalBuffer.shift()
     }
     
-    // Need minimum samples for calculation
-    if (this.signalBuffer.length < CONFIG.MIN_SAMPLES_FOR_CALCULATION) {
+    // Need minimum data
+    if (this.signalBuffer.length < CONFIG.SAMPLE_RATE_HZ * 2) {
       return this.getResult()
     }
     
-    // Detect peaks and calculate HR
-    this.detectPeaksAndCalculateHR(timestamp)
-    
-    this.lastUpdateTime = timestamp
+    // Process signal
+    this.processSignal(timestamp)
     
     return this.getResult()
   }
   
   /**
-   * Detect peaks in the signal buffer and calculate HR
+   * Main signal processing
    */
-  detectPeaksAndCalculateHR(currentTime) {
-    const buffer = this.signalBuffer
-    const len = buffer.length
+  processSignal(currentTime) {
+    const raw = this.signalBuffer
     
-    // Calculate signal statistics for adaptive thresholding
-    let sum = 0, min = Infinity, max = -Infinity
-    for (let i = 0; i < len; i++) {
-      sum += buffer[i]
-      if (buffer[i] < min) min = buffer[i]
-      if (buffer[i] > max) max = buffer[i]
-    }
-    const mean = sum / len
-    const amplitude = max - min
+    // Step 1: Apply moving average filter to smooth noise
+    const smoothed = movingAverage(raw, CONFIG.MOVING_AVG_WINDOW)
     
-    // Check signal quality (amplitude should be significant)
-    if (amplitude < 100) {  // Very low signal
-      this.signalQuality = Math.max(0, this.signalQuality - 5)
-      return
-    }
+    // Step 2: Calculate derivative for peak detection
+    const deriv = derivative(smoothed, CONFIG.DERIVATIVE_WINDOW)
     
-    // Adaptive threshold for peak detection
-    const threshold = mean + CONFIG.PEAK_THRESHOLD_FACTOR * (max - mean)
+    // Step 3: Calculate adaptive threshold
+    const mean = smoothed.reduce((a, b) => a + b, 0) / smoothed.length
+    const max = Math.max(...smoothed)
+    const threshold = mean + CONFIG.PEAK_PROMINENCE_FACTOR * (max - mean)
     
-    // Minimum samples between peaks
-    const minPeakDistance = Math.floor(CONFIG.MIN_PEAK_DISTANCE_MS / 1000 * CONFIG.SAMPLE_RATE_HZ)
+    // Step 4: Minimum samples between peaks
+    const minPeakDistance = Math.floor(CONFIG.REFRACTORY_PERIOD_MS / 1000 * CONFIG.SAMPLE_RATE_HZ)
     
-    // Find peaks in the most recent portion of the buffer
-    // We only look at the last 2 seconds to find new peaks
-    const lookbackSamples = Math.floor(CONFIG.SAMPLE_RATE_HZ * 2)
-    const startIdx = Math.max(0, len - lookbackSamples)
+    // Step 5: Find peaks
+    const peaks = findPeaks(smoothed, deriv, minPeakDistance, threshold)
     
-    const peaks = []
-    for (let i = startIdx + 1; i < len - 1; i++) {
-      // Peak: higher than neighbors and above threshold
-      if (buffer[i] > buffer[i - 1] && 
-          buffer[i] > buffer[i + 1] && 
-          buffer[i] > threshold) {
-        
-        // Check minimum distance from last peak
-        if (peaks.length === 0 || (i - peaks[peaks.length - 1]) >= minPeakDistance) {
-          peaks.push(i)
-        }
-      }
-    }
+    this.totalPeakCount = peaks.length
     
-    // Calculate IBIs from consecutive peaks
+    // Step 6: Calculate IBIs from consecutive peaks
     if (peaks.length >= 2) {
       for (let i = 1; i < peaks.length; i++) {
         const peakDistance = peaks[i] - peaks[i - 1]
         const ibiMs = (peakDistance / CONFIG.SAMPLE_RATE_HZ) * 1000
         
-        // Validate IBI is in reasonable range
-        if (ibiMs >= CONFIG.MIN_PEAK_DISTANCE_MS && ibiMs <= CONFIG.MAX_PEAK_DISTANCE_MS) {
-          this.addIBI(ibiMs)
-          this.peakCount++
+        // Validate IBI
+        if (isValidIBI(ibiMs, this.ibiHistory)) {
+          this.ibiHistory.push(ibiMs)
+          this.validPeakCount++
+          
+          // Keep history limited
+          while (this.ibiHistory.length > CONFIG.IBI_HISTORY_SIZE) {
+            this.ibiHistory.shift()
+          }
         }
       }
-      
-      // Update signal quality based on peak regularity
-      this.signalQuality = Math.min(100, this.signalQuality + 2)
-    } else {
-      this.signalQuality = Math.max(0, this.signalQuality - 1)
     }
     
-    // Calculate HR from IBI history
-    if (this.ibiHistory.length > 0) {
-      // Average IBI
-      const avgIBI = this.ibiHistory.reduce((a, b) => a + b, 0) / this.ibiHistory.length
-      this.currentIBI = Math.round(avgIBI)
+    // Step 7: Calculate HR from IBI history
+    if (this.ibiHistory.length >= CONFIG.MIN_PEAKS_FOR_OUTPUT) {
+      // Use median IBI for robustness
+      const medianIBI = median(this.ibiHistory)
+      this.currentIBI = Math.round(medianIBI)
       
-      // Calculate raw HR from average IBI
-      const rawHR = 60000 / avgIBI
-      this.rawHR = rawHR
+      // Calculate HR
+      const hr = 60000 / medianIBI
+      this.currentHR = hr
       
-      // Smooth HR
-      if (this.currentHR === 0) {
-        this.currentHR = rawHR
+      // Smooth output
+      if (this.smoothedHR === 0) {
+        this.smoothedHR = hr
       } else {
-        this.currentHR = this.currentHR * (1 - CONFIG.HR_SMOOTHING_FACTOR) + 
-                         rawHR * CONFIG.HR_SMOOTHING_FACTOR
+        this.smoothedHR = this.smoothedHR * (1 - CONFIG.HR_SMOOTHING_FACTOR) + 
+                          hr * CONFIG.HR_SMOOTHING_FACTOR
       }
       
       // Clamp to valid range
-      this.currentHR = Math.max(CONFIG.MIN_HR_BPM, Math.min(CONFIG.MAX_HR_BPM, this.currentHR))
+      this.smoothedHR = Math.max(CONFIG.MIN_HR_BPM, Math.min(CONFIG.MAX_HR_BPM, this.smoothedHR))
+      
+      // Update quality based on consistency
+      this.signalQuality = Math.min(100, this.validPeakCount * 10)
     }
   }
   
   /**
-   * Add an IBI to the history buffer
-   */
-  addIBI(ibiMs) {
-    this.ibiHistory.push(ibiMs)
-    
-    // Keep history limited
-    while (this.ibiHistory.length > CONFIG.IBI_BUFFER_SIZE) {
-      this.ibiHistory.shift()
-    }
-  }
-  
-  /**
-   * Get current calculated values
+   * Get current result
    */
   getResult() {
     return {
-      hr: Math.round(this.currentHR * 10) / 10,  // 1 decimal
+      hr: Math.round(this.smoothedHR * 10) / 10,
       ibi: this.currentIBI,
       quality: Math.round(this.signalQuality),
-      rawHr: Math.round(this.rawHR * 10) / 10,
-      peakCount: this.peakCount,
+      rawHr: Math.round(this.currentHR * 10) / 10,
+      peakCount: this.validPeakCount,
       sampleCount: this.sampleCount
     }
   }
-  
-  /**
-   * Get signal quality (0-100%)
-   */
-  getSignalQuality() {
-    return this.signalQuality
-  }
 }
 
-// Create singleton instance
+// Singleton instance
 const heartRateCalculator = new HeartRateCalculator()
 
 /**
  * Process PPG data and return calculated HR/IBI
- * This is the main function to call from React components
- * 
- * @param {Object} ppgData - PPG data object with ir, g, r arrays
- * @param {number} timestamp - Timestamp of the data
- * @returns {{ hr: number, ibi: number, quality: number }}
  */
 export function calculateHeartRate(ppgData, timestamp) {
   if (!ppgData) {
     return heartRateCalculator.getResult()
   }
   
-  // Prefer IR channel, then Green, then Red
-  // IR is typically best for HR detection
-  const samples = ppgData.ir || ppgData.g || ppgData.r
+  // Prefer IR channel, then Green (Red is worst for HR)
+  const samples = ppgData.ir || ppgData.g
   
   if (!samples || !Array.isArray(samples)) {
     return heartRateCalculator.getResult()
@@ -255,14 +296,14 @@ export function calculateHeartRate(ppgData, timestamp) {
 }
 
 /**
- * Reset the calculator (e.g., when sensor disconnects)
+ * Reset the calculator
  */
 export function resetHeartRateCalculator() {
   heartRateCalculator.reset()
 }
 
 /**
- * Get current HR without processing new samples
+ * Get current HR without processing
  */
 export function getCurrentHeartRate() {
   return heartRateCalculator.getResult()
