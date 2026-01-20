@@ -56,17 +56,45 @@ export function MQTTSensorDataProvider({ children, mqttMessages, reloadTopics })
 
                 if (isSensorTopic) {
                     const data = JSON.parse(payload)
+
+                    // Extract variable name from topic (last segment)
+                    // e.g., ETSIIAB/emotibit/0CDC7ECC5F10/ppg_green -> ppg_green
+                    const topicParts = topic.split('/')
+                    const variableName = topicParts[topicParts.length - 1]
+
                     // Try multiple ways to get sensorId
+                    // For EmotiBit: ETSIIAB/emotibit/0CDC7ECC5F10/ppg_green -> 0CDC7ECC5F10
                     const sensorId = data.sensorId || data.sensor_id || data.device_id ||
-                        topic.split('/').slice(-2, -1)[0] || topic
+                        topicParts.slice(-2, -1)[0] || topic
 
                     setSensorData(prev => {
                         const newMap = new Map(prev)
-                        newMap.set(sensorId, {
-                            ...data,
+                        const existingData = prev.get(sensorId) || { values: {} }
+
+                        // Merge new data with existing - preserve all variables
+                        const mergedData = {
+                            ...existingData,
                             timestamp: data.timestamp || new Date().toISOString(),
-                            topic
-                        })
+                            topic,
+                            sensorId
+                        }
+
+                        // Store the entire payload under the variable name
+                        // This handles EmotiBit format where each topic has variable-sized objects
+                        if (variableName && variableName !== sensorId) {
+                            // Store the whole data object under the variable name
+                            mergedData.values = {
+                                ...(existingData.values || {}),
+                                [variableName]: data
+                            }
+                            // Also store at root level for easy access
+                            mergedData[variableName] = data
+                        } else {
+                            // For non-variable topics, merge data directly
+                            Object.assign(mergedData, data)
+                        }
+
+                        newMap.set(sensorId, mergedData)
                         return newMap
                     })
                 }
