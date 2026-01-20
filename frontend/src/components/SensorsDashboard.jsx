@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useMQTT } from '../contexts/MQTTContext'
 import { useScenario } from '../contexts/ScenarioContext'
 import { useEmqxData } from '../hooks/useEmqxData'
+import { calculateHeartRate, resetHeartRateCalculator } from '../utils/heartRateCalculator'
 import {
   Activity,
   Radio,
@@ -660,6 +661,9 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
   const unit = sensor?.unit || ''
   const sensorType = sensor?.type?.toLowerCase() || ''
 
+  // State for frontend-calculated HR (more consistent than device HR)
+  const [calculatedHR, setCalculatedHR] = React.useState({ hr: 0, ibi: 0, quality: 0 })
+
   // Cache for EmotiBit data to preserve values when data is intermittent
   const cachedDataRef = React.useRef({
     status: null,
@@ -667,6 +671,23 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
     allVariables: {},
     lastTimestamp: null
   })
+
+  // Calculate HR from PPG data in frontend
+  React.useEffect(() => {
+    if (data && sensorType === 'emotibit') {
+      // Get PPG data from the payload
+      const ppgData = data.values?.data?.ppg || data.data?.ppg || data.ppg
+      const timestamp = data.timestamp || Date.now()
+
+      if (ppgData) {
+        // Calculate HR using our frontend algorithm
+        const result = calculateHeartRate(ppgData, timestamp)
+        if (result.hr > 0) {
+          setCalculatedHR(result)
+        }
+      }
+    }
+  }, [data, sensorType])
 
   // Update cache with new data if available
   React.useEffect(() => {
@@ -696,6 +717,7 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
       cachedDataRef.current.lastTimestamp = data.timestamp || Date.now()
     }
   }, [data, sensorType])
+
 
   // MOTA variable keys for detection
   const motaKeys = ['temperatura', 'humedad', 'luz', 'ruido_dbfs', 'aqi', 'tvoc', 'eco2', 'bmp_temperatura', 'bmp_presion', 'bmp_altitud']
@@ -872,12 +894,17 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
     const metadata = extracted.metadata
 
     // EmotiBit variable definitions (based on real data structure from broker)
-    // Real format: ppg: {g:[], r:[], ir:[]}, eda: {v:[]}, temp: {skin:[]}, acc/gyr/mag: {x:[], y:[], z:[]}
-    // With units for each subkey
+    // Real format from EmotiBit C++ firmware:
+    //   ppg: {hz, ts_g, g:[], ts_r, r:[], ts_ir, ir:[]}
+    //   eda: {hz, ts, uS:[]}  - microSiemens
+    //   temp: {hz, ts, c:[]}  - Celsius
+    //   acc/gyr/mag: {hz, ts, x:[], y:[], z:[]}
+    //   hr: {ts, bpm, ibi}    - Heart Rate (aperiodic, only when beat detected)
     const emotibitVars = [
+      { key: 'hr', emoji: '❤️', label: 'Heart Rate', unit: '', subkeys: ['bpm', 'ibi'], subkeyUnits: { bpm: 'BPM', ibi: 'ms' } },
       { key: 'ppg', emoji: '💓', label: 'PPG', unit: 'counts', subkeys: ['g', 'r', 'ir'], subkeyUnits: { g: '', r: '', ir: '' } },
-      { key: 'eda', emoji: '⚡', label: 'EDA', unit: 'µS', subkeys: ['v', 'r'], subkeyUnits: { v: 'µS', r: 'Ω' } },
-      { key: 'temp', emoji: '🌡️', label: 'Temp', unit: '°C', subkeys: ['skin'], subkeyUnits: { skin: '°C' } },
+      { key: 'eda', emoji: '⚡', label: 'EDA', unit: 'µS', subkeys: ['uS', 'v'], subkeyUnits: { uS: 'µS', v: 'µS' } },
+      { key: 'temp', emoji: '🌡️', label: 'Temp', unit: '°C', subkeys: ['c', 'skin'], subkeyUnits: { c: '°C', skin: '°C' } },
       { key: 'acc', emoji: '📐', label: 'Accel', unit: 'g', subkeys: ['x', 'y', 'z'], subkeyUnits: { x: 'g', y: 'g', z: 'g' } },
       { key: 'gyr', emoji: '🔄', label: 'Gyro', unit: '°/s', subkeys: ['x', 'y', 'z'], subkeyUnits: { x: '°/s', y: '°/s', z: '°/s' } },
       { key: 'mag', emoji: '🧲', label: 'Mag', unit: 'µT', subkeys: ['x', 'y', 'z'], subkeyUnits: { x: 'µT', y: 'µT', z: 'µT' } },
@@ -959,6 +986,38 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
 
     return (
       <div className="flex flex-col gap-1 text-[10px] w-full h-full overflow-y-auto">
+        {/* Frontend-calculated Heart Rate - More consistent than device HR */}
+        {calculatedHR.hr > 0 && (
+          <>
+            <div className="bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/30 dark:to-pink-900/30 rounded-lg px-3 py-2 border border-red-200 dark:border-red-800">
+              <div className="flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-lg">💗</span>
+                  <span className="text-gray-700 dark:text-gray-200 font-semibold text-sm">HR (Frontend)</span>
+                </span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400">
+                  Q: {calculatedHR.quality}%
+                </span>
+              </div>
+              <div className="flex items-baseline gap-3">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-red-600 dark:text-red-400 tabular-nums">
+                    {calculatedHR.hr}
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">BPM</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-sm font-semibold text-pink-600 dark:text-pink-400 tabular-nums">
+                    {calculatedHR.ibi}
+                  </span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400">ms IBI</span>
+                </div>
+              </div>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-gray-600 my-1" />
+          </>
+        )}
+
         {/* Status section */}
         {status && (
           <>
@@ -1041,9 +1100,9 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
                 <span className="text-gray-700 dark:text-gray-200 font-semibold text-sm">{label}</span>
                 {unit && <span className="text-xs text-gray-400 dark:text-gray-500">({unit})</span>}
               </div>
-              {/* Subkey rows - always show all subkeys */}
+              {/* Subkey rows - only show subkeys that have data */}
               <div className="pl-6 space-y-1">
-                {subkeys.map(subkey => {
+                {subkeys.filter(subkey => sensorVal[subkey] !== undefined).map(subkey => {
                   const subVal = sensorVal[subkey]
                   const subUnit = subkeyUnits?.[subkey] || ''
                   return (
