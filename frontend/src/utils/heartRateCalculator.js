@@ -1,90 +1,185 @@
 /**
- * Heart Rate Calculator using PPG Peak Detection v2
+ * Heart Rate Calculator v4 - Professional PPG Processing
  * 
- * Improved algorithm with:
- * - Better signal filtering (moving average + derivative)
- * - More robust peak detection
- * - IBI outlier rejection
- * - Heavier smoothing for stable output
+ * Based on research from:
+ * - NIH PPG processing guidelines
+ * - IEEE signal processing papers
+ * - Clinical PPG algorithm benchmarks
+ * 
+ * KEY IMPROVEMENTS:
+ * 1. Use GREEN channel (G) preferentially - less motion artifact
+ * 2. Butterworth Bandpass Filter 0.5-4 Hz (order 2, cascade for order 4)
+ * 3. Slope Sum Function (SSF) for peak enhancement
+ * 4. Adaptive threshold based on signal statistics
  */
 
-// Configuration - tuned for EmotiBit PPG at 75Hz
+// ============================================================
+//                    CONFIGURATION
+// ============================================================
 const CONFIG = {
-  // PPG sample rate from EmotiBit
+  // EmotiBit PPG sample rate
   SAMPLE_RATE_HZ: 75,
   
-  // Valid heart rate range (physiological limits)
-  MIN_HR_BPM: 40,
-  MAX_HR_BPM: 110,   // Further reduced - we'll be conservative
+  // Butterworth bandpass filter parameters
+  // 0.5-4 Hz captures heart rate range (30-240 BPM) and removes noise
+  FILTER_LOW_CUTOFF_HZ: 0.5,   // Removes baseline wander
+  FILTER_HIGH_CUTOFF_HZ: 4.0,  // Removes high-freq noise, motion artifacts
   
-  // Corresponding IBI limits  
-  MIN_IBI_MS: 545,   // 110 BPM - only accept slower beats initially
+  // Physiological limits
+  MIN_HR_BPM: 40,
+  MAX_HR_BPM: 180,
+  MIN_IBI_MS: 333,   // 180 BPM
   MAX_IBI_MS: 1500,  // 40 BPM
   
-  // Signal processing
-  MOVING_AVG_WINDOW: 9,       // More smoothing
-  DERIVATIVE_WINDOW: 7,       // Larger window
+  // Peak detection
+  REFRACTORY_PERIOD_MS: 333,  // Minimum time between beats (180 BPM max)
+  SSF_WINDOW_SAMPLES: 8,      // Slope Sum Function window
+  ADAPTIVE_THRESHOLD_FACTOR: 0.4,  // Threshold = mean + factor * (max - mean)
   
-  // Peak detection - VERY conservative to avoid false peaks
-  REFRACTORY_PERIOD_MS: 550,  // 550ms minimum between peaks (~109 BPM max)
-  PEAK_PROMINENCE_FACTOR: 0.7, // Peak must be 70% above baseline
+  // IBI validation
+  IBI_CHANGE_THRESHOLD: 0.20,  // Max 20% change from median
+  IBI_HISTORY_SIZE: 8,
   
-  // IBI validation - strict
-  IBI_CHANGE_THRESHOLD: 0.15, // Only 15% variation allowed
-  IBI_HISTORY_SIZE: 12,       // More history for stable median
+  // Output
+  HR_SMOOTHING_FACTOR: 0.12,
+  MIN_VALID_PEAKS: 4,
   
-  // Output smoothing - very heavy
-  HR_SMOOTHING_FACTOR: 0.08,  // Very slow changes
-  MIN_PEAKS_FOR_OUTPUT: 5,    // Need 5 valid peaks
+  // Buffer
+  BUFFER_SECONDS: 8,
+}
+
+// ============================================================
+//                    BUTTERWORTH FILTER
+// ============================================================
+
+/**
+ * Second-order Butterworth filter coefficients calculator
+ * Creates a biquad filter section
+ */
+function calculateBiquadCoefficients(fs, fc, type) {
+  const omega = 2 * Math.PI * fc / fs
+  const cosOmega = Math.cos(omega)
+  const sinOmega = Math.sin(omega)
+  const alpha = sinOmega / (2 * Math.sqrt(2))  // Q = sqrt(2)/2 for Butterworth
   
-  // Buffer size
-  SIGNAL_BUFFER_SECONDS: 10,  // 10 seconds of data
+  let b0, b1, b2, a0, a1, a2
+  
+  if (type === 'lowpass') {
+    b0 = (1 - cosOmega) / 2
+    b1 = 1 - cosOmega
+    b2 = (1 - cosOmega) / 2
+    a0 = 1 + alpha
+    a1 = -2 * cosOmega
+    a2 = 1 - alpha
+  } else if (type === 'highpass') {
+    b0 = (1 + cosOmega) / 2
+    b1 = -(1 + cosOmega)
+    b2 = (1 + cosOmega) / 2
+    a0 = 1 + alpha
+    a1 = -2 * cosOmega
+    a2 = 1 - alpha
+  }
+  
+  // Normalize coefficients
+  return {
+    b0: b0 / a0,
+    b1: b1 / a0,
+    b2: b2 / a0,
+    a1: a1 / a0,
+    a2: a2 / a0
+  }
 }
 
 /**
- * Simple moving average filter
+ * Biquad filter implementation (Direct Form II Transposed)
  */
-function movingAverage(data, windowSize) {
-  const result = []
-  for (let i = 0; i < data.length; i++) {
-    let sum = 0
-    let count = 0
-    for (let j = Math.max(0, i - windowSize + 1); j <= i; j++) {
-      sum += data[j]
-      count++
-    }
-    result.push(sum / count)
+class BiquadFilter {
+  constructor(coeffs) {
+    this.b0 = coeffs.b0
+    this.b1 = coeffs.b1
+    this.b2 = coeffs.b2
+    this.a1 = coeffs.a1
+    this.a2 = coeffs.a2
+    this.z1 = 0
+    this.z2 = 0
   }
+  
+  process(input) {
+    const output = this.b0 * input + this.z1
+    this.z1 = this.b1 * input - this.a1 * output + this.z2
+    this.z2 = this.b2 * input - this.a2 * output
+    return output
+  }
+  
+  reset() {
+    this.z1 = 0
+    this.z2 = 0
+  }
+}
+
+/**
+ * Bandpass filter using cascaded highpass + lowpass
+ */
+class BandpassFilter {
+  constructor(fs, lowCutoff, highCutoff) {
+    // Highpass at low cutoff
+    const hpCoeffs = calculateBiquadCoefficients(fs, lowCutoff, 'highpass')
+    this.highpass = new BiquadFilter(hpCoeffs)
+    
+    // Lowpass at high cutoff
+    const lpCoeffs = calculateBiquadCoefficients(fs, highCutoff, 'lowpass')
+    this.lowpass = new BiquadFilter(lpCoeffs)
+  }
+  
+  process(input) {
+    // First highpass, then lowpass
+    const hp = this.highpass.process(input)
+    return this.lowpass.process(hp)
+  }
+  
+  reset() {
+    this.highpass.reset()
+    this.lowpass.reset()
+  }
+}
+
+// ============================================================
+//                    SIGNAL PROCESSING
+// ============================================================
+
+/**
+ * Slope Sum Function (SSF) - enhances upward slopes for peak detection
+ * This is a key technique in professional PPG processing
+ */
+function slopeSumFunction(signal, windowSize) {
+  const result = new Array(signal.length).fill(0)
+  
+  for (let i = windowSize; i < signal.length; i++) {
+    let ssfSum = 0
+    for (let j = 0; j < windowSize; j++) {
+      const slope = signal[i - j] - signal[i - j - 1]
+      if (slope > 0) {
+        ssfSum += slope
+      }
+    }
+    result[i] = ssfSum
+  }
+  
   return result
 }
 
 /**
- * Calculate derivative (rate of change)
+ * Find peaks using SSF and adaptive threshold
  */
-function derivative(data, windowSize = 1) {
-  const result = []
-  for (let i = 0; i < data.length; i++) {
-    if (i < windowSize) {
-      result.push(0)
-    } else {
-      result.push(data[i] - data[i - windowSize])
-    }
-  }
-  return result
-}
-
-/**
- * Find peaks in signal using derivative zero-crossing
- */
-function findPeaks(signal, derivative, minDistance, threshold) {
+function findPeaksSSF(ssf, originalSignal, minDistance, adaptiveThreshold) {
   const peaks = []
   
-  for (let i = 2; i < signal.length - 1; i++) {
-    // Peak: derivative goes from positive to negative
-    if (derivative[i - 1] > 0 && derivative[i] <= 0) {
-      // Check if peak is above threshold
-      if (signal[i] > threshold) {
-        // Check minimum distance from last peak
+  for (let i = 2; i < ssf.length - 1; i++) {
+    // Local maximum in SSF
+    if (ssf[i] > ssf[i - 1] && ssf[i] >= ssf[i + 1]) {
+      // Above adaptive threshold
+      if (ssf[i] > adaptiveThreshold) {
+        // Respect minimum distance
         if (peaks.length === 0 || (i - peaks[peaks.length - 1]) >= minDistance) {
           peaks.push(i)
         }
@@ -96,26 +191,19 @@ function findPeaks(signal, derivative, minDistance, threshold) {
 }
 
 /**
- * Validate IBI against history
+ * Calculate adaptive threshold from signal statistics
  */
-function isValidIBI(newIBI, ibiHistory) {
-  // Check physiological limits
-  if (newIBI < CONFIG.MIN_IBI_MS || newIBI > CONFIG.MAX_IBI_MS) {
-    return false
+function calculateAdaptiveThreshold(signal, factor) {
+  if (signal.length === 0) return 0
+  
+  let sum = 0, max = -Infinity
+  for (let i = 0; i < signal.length; i++) {
+    sum += signal[i]
+    if (signal[i] > max) max = signal[i]
   }
+  const mean = sum / signal.length
   
-  // If no history, accept
-  if (ibiHistory.length === 0) {
-    return true
-  }
-  
-  // Check against median of recent IBIs
-  const sorted = [...ibiHistory].sort((a, b) => a - b)
-  const median = sorted[Math.floor(sorted.length / 2)]
-  
-  // Allow some variation but reject outliers
-  const change = Math.abs(newIBI - median) / median
-  return change <= CONFIG.IBI_CHANGE_THRESHOLD
+  return mean + factor * (max - mean)
 }
 
 /**
@@ -129,19 +217,48 @@ function median(arr) {
 }
 
 /**
- * HeartRateCalculator class
+ * Validate IBI against physiological limits and history
  */
+function isValidIBI(ibi, ibiHistory, changeThreshold) {
+  // Check absolute limits
+  if (ibi < CONFIG.MIN_IBI_MS || ibi > CONFIG.MAX_IBI_MS) {
+    return false
+  }
+  
+  // First IBI is always valid
+  if (ibiHistory.length === 0) {
+    return true
+  }
+  
+  // Check against median of history
+  const med = median(ibiHistory)
+  const change = Math.abs(ibi - med) / med
+  return change <= changeThreshold
+}
+
+// ============================================================
+//                    HEART RATE CALCULATOR
+// ============================================================
+
 class HeartRateCalculator {
   constructor() {
     this.reset()
   }
   
   reset() {
-    // Signal buffer
-    this.signalBuffer = []
-    this.maxBufferSize = CONFIG.SAMPLE_RATE_HZ * CONFIG.SIGNAL_BUFFER_SECONDS
+    // Bandpass filter (0.5-4 Hz)
+    this.bandpassFilter = new BandpassFilter(
+      CONFIG.SAMPLE_RATE_HZ,
+      CONFIG.FILTER_LOW_CUTOFF_HZ,
+      CONFIG.FILTER_HIGH_CUTOFF_HZ
+    )
     
-    // IBI history (validated IBIs only)
+    // Signal buffers
+    this.rawBuffer = []
+    this.filteredBuffer = []
+    this.maxBufferSize = CONFIG.SAMPLE_RATE_HZ * CONFIG.BUFFER_SECONDS
+    
+    // IBI history
     this.ibiHistory = []
     
     // Output values
@@ -152,76 +269,71 @@ class HeartRateCalculator {
     // Quality metrics
     this.signalQuality = 0
     this.validPeakCount = 0
-    this.totalPeakCount = 0
     
-    // Timestamps
-    this.lastPeakTime = 0
+    // Sample counter
     this.sampleCount = 0
   }
   
   /**
    * Process new PPG samples
+   * Prefers Green channel (less motion artifact), then IR
    */
   processSamples(samples, timestamp) {
     if (!samples || samples.length === 0) {
       return this.getResult()
     }
     
-    // Add samples to buffer
+    // Process each sample through bandpass filter
     for (const sample of samples) {
-      this.signalBuffer.push(sample)
+      const filtered = this.bandpassFilter.process(sample)
+      this.rawBuffer.push(sample)
+      this.filteredBuffer.push(filtered)
       this.sampleCount++
     }
     
-    // Trim buffer
-    while (this.signalBuffer.length > this.maxBufferSize) {
-      this.signalBuffer.shift()
+    // Trim buffers
+    while (this.rawBuffer.length > this.maxBufferSize) {
+      this.rawBuffer.shift()
+      this.filteredBuffer.shift()
     }
     
-    // Need minimum data
-    if (this.signalBuffer.length < CONFIG.SAMPLE_RATE_HZ * 2) {
+    // Need minimum data for processing
+    if (this.filteredBuffer.length < CONFIG.SAMPLE_RATE_HZ * 3) {
       return this.getResult()
     }
     
-    // Process signal
-    this.processSignal(timestamp)
+    // Process signal for peaks
+    this.detectPeaksAndCalculateHR()
     
     return this.getResult()
   }
   
   /**
-   * Main signal processing
+   * Main peak detection and HR calculation
    */
-  processSignal(currentTime) {
-    const raw = this.signalBuffer
+  detectPeaksAndCalculateHR() {
+    const filtered = this.filteredBuffer
     
-    // Step 1: Apply moving average filter to smooth noise
-    const smoothed = movingAverage(raw, CONFIG.MOVING_AVG_WINDOW)
+    // Step 1: Apply Slope Sum Function (SSF)
+    const ssf = slopeSumFunction(filtered, CONFIG.SSF_WINDOW_SAMPLES)
     
-    // Step 2: Calculate derivative for peak detection
-    const deriv = derivative(smoothed, CONFIG.DERIVATIVE_WINDOW)
+    // Step 2: Calculate adaptive threshold
+    const threshold = calculateAdaptiveThreshold(ssf, CONFIG.ADAPTIVE_THRESHOLD_FACTOR)
     
-    // Step 3: Calculate adaptive threshold
-    const mean = smoothed.reduce((a, b) => a + b, 0) / smoothed.length
-    const max = Math.max(...smoothed)
-    const threshold = mean + CONFIG.PEAK_PROMINENCE_FACTOR * (max - mean)
-    
-    // Step 4: Minimum samples between peaks
+    // Step 3: Minimum samples between peaks
     const minPeakDistance = Math.floor(CONFIG.REFRACTORY_PERIOD_MS / 1000 * CONFIG.SAMPLE_RATE_HZ)
     
-    // Step 5: Find peaks
-    const peaks = findPeaks(smoothed, deriv, minPeakDistance, threshold)
+    // Step 4: Find peaks
+    const peaks = findPeaksSSF(ssf, filtered, minPeakDistance, threshold)
     
-    this.totalPeakCount = peaks.length
-    
-    // Step 6: Calculate IBIs from consecutive peaks
+    // Step 5: Calculate IBIs and validate
     if (peaks.length >= 2) {
       for (let i = 1; i < peaks.length; i++) {
         const peakDistance = peaks[i] - peaks[i - 1]
         const ibiMs = (peakDistance / CONFIG.SAMPLE_RATE_HZ) * 1000
         
         // Validate IBI
-        if (isValidIBI(ibiMs, this.ibiHistory)) {
+        if (isValidIBI(ibiMs, this.ibiHistory, CONFIG.IBI_CHANGE_THRESHOLD)) {
           this.ibiHistory.push(ibiMs)
           this.validPeakCount++
           
@@ -233,9 +345,9 @@ class HeartRateCalculator {
       }
     }
     
-    // Step 7: Calculate HR from IBI history
-    if (this.ibiHistory.length >= CONFIG.MIN_PEAKS_FOR_OUTPUT) {
-      // Use median IBI for robustness
+    // Step 6: Calculate HR from validated IBIs
+    if (this.ibiHistory.length >= CONFIG.MIN_VALID_PEAKS) {
+      // Use median for robustness
       const medianIBI = median(this.ibiHistory)
       this.currentIBI = Math.round(medianIBI)
       
@@ -254,9 +366,22 @@ class HeartRateCalculator {
       // Clamp to valid range
       this.smoothedHR = Math.max(CONFIG.MIN_HR_BPM, Math.min(CONFIG.MAX_HR_BPM, this.smoothedHR))
       
-      // Update quality based on consistency
-      this.signalQuality = Math.min(100, this.validPeakCount * 10)
+      // Update quality (based on peak regularity)
+      const ibiStdDev = this.calculateIBIStdDev()
+      const regularityScore = Math.max(0, 100 - (ibiStdDev / 10))
+      this.signalQuality = Math.min(100, regularityScore)
     }
+  }
+  
+  /**
+   * Calculate IBI standard deviation for quality assessment
+   */
+  calculateIBIStdDev() {
+    if (this.ibiHistory.length < 2) return 100
+    
+    const mean = this.ibiHistory.reduce((a, b) => a + b, 0) / this.ibiHistory.length
+    const variance = this.ibiHistory.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / this.ibiHistory.length
+    return Math.sqrt(variance)
   }
   
   /**
@@ -274,19 +399,27 @@ class HeartRateCalculator {
   }
 }
 
+// ============================================================
+//                    EXPORTS
+// ============================================================
+
 // Singleton instance
 const heartRateCalculator = new HeartRateCalculator()
 
 /**
  * Process PPG data and return calculated HR/IBI
+ * 
+ * IMPORTANT: Uses GREEN (g) channel preferentially
+ * Green light has less motion artifact and better signal quality for HR
  */
 export function calculateHeartRate(ppgData, timestamp) {
   if (!ppgData) {
     return heartRateCalculator.getResult()
   }
   
-  // Prefer IR channel, then Green (Red is worst for HR)
-  const samples = ppgData.ir || ppgData.g
+  // PREFER GREEN CHANNEL (research shows it's best for HR)
+  // Then IR, then Red (worst for HR)
+  const samples = ppgData.g || ppgData.ir || ppgData.r
   
   if (!samples || !Array.isArray(samples)) {
     return heartRateCalculator.getResult()

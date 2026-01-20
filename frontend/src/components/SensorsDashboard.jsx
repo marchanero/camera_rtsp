@@ -986,8 +986,8 @@ const SensorValueDisplay = memo(function SensorValueDisplay({ data, sensor }) {
 
     return (
       <div className="flex flex-col gap-1 text-[10px] w-full h-full overflow-y-auto">
-        {/* Frontend-calculated Heart Rate - More consistent than device HR */}
-        {calculatedHR.hr > 0 && (
+        {/* Frontend-calculated Heart Rate - TEMPORARILY HIDDEN */}
+        {false && calculatedHR.hr > 0 && (
           <>
             <div className="bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/30 dark:to-pink-900/30 rounded-lg px-3 py-2 border border-red-200 dark:border-red-800">
               <div className="flex items-center justify-between mb-1">
