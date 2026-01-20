@@ -316,7 +316,7 @@ class MediaServerManager {
       '-c:v', 'copy',
       '-c:a', 'aac',
       '-f', 'segment',
-      '-segment_time', '3600', // 1 hora por archivo
+      '-segment_time', '1200', // 20 minutos por archivo
       '-segment_format', 'mp4',
       '-segment_format_options', 'movflags=+faststart', // Optimizar para streaming
       '-reset_timestamps', '1',

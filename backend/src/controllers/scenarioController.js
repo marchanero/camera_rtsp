@@ -177,6 +177,41 @@ const updateScenario = async (req, res) => {
       data: updateData
     })
     
+    // Sincronizar suscripciones MQTT si se actualizaron los sensores
+    if (sensors !== undefined && Array.isArray(sensors) && sensors.length > 0) {
+      try {
+        // Importar mqttService dinámicamente para evitar dependencias circulares
+        const mqttService = (await import('../services/mqttService.js')).default
+        
+        if (mqttService.isConnected) {
+          // Obtener los sensores con sus topics
+          const sensorRecords = await prisma.sensor.findMany({
+            where: { 
+              sensorId: { in: sensors },
+              isActive: true
+            },
+            select: { sensorId: true, topicBase: true, name: true }
+          })
+          
+          // Suscribirse a los topics de los sensores del escenario
+          for (const sensor of sensorRecords) {
+            if (sensor.topicBase && sensor.topicBase.trim() !== '') {
+              const topic = `${sensor.topicBase}/#`
+              try {
+                await mqttService.subscribe(topic)
+                console.log(`✅ Escenario "${scenario.name}": Suscrito a sensor ${sensor.name} (${topic})`)
+              } catch (err) {
+                console.warn(`⚠️ Error suscribiendo a ${topic}:`, err.message)
+              }
+            }
+          }
+        }
+      } catch (mqttError) {
+        console.warn('⚠️ Error sincronizando suscripciones MQTT:', mqttError.message)
+        // No fallamos la operación por un error de MQTT
+      }
+    }
+    
     // Parsear JSON strings a objetos
     const scenarioWithParsedData = {
       ...scenario,

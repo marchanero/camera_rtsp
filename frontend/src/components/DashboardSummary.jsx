@@ -441,10 +441,11 @@ const DashboardSummary = () => {
 
     Array.from(sensorData.entries()).forEach(([sensorId, data]) => {
       const isRecent = Date.now() - new Date(data.timestamp).getTime() < 10000
+      // Show ONLY sensors assigned to the active scenario
       const isInScenario = scenarioSensorIds.includes(sensorId) ||
         scenarioSensorIds.includes(String(sensorId))
 
-      if (isRecent && !isInScenario) {
+      if (isRecent && isInScenario) {
         uniqueSensors.set(sensorId, {
           id: sensorId,
           type: data.type || sensorId,
@@ -456,7 +457,7 @@ const DashboardSummary = () => {
     })
 
     return Array.from(uniqueSensors.values())
-      .sort((a, b) => a.type.localeCompare(b.type))
+      .sort((a, b) => (a.type || '').localeCompare(b.type || ''))
       .slice(0, 5)
   }, [sensorData, scenarioSensorIds])
 
@@ -515,6 +516,41 @@ const DashboardSummary = () => {
               }}
               onDownload={handleDownloadRecording}
               onDelete={handleDeleteRecording}
+              onConsolidate={async (cameraId) => {
+                try {
+                  // Obtener la ruta del directorio de grabaciones
+                  const firstRecording = cameraRecordings.find(r => !r.filename.includes('_COMPLETO'))
+                  if (!firstRecording || !firstRecording.path) {
+                    toast.error('No se encontraron segmentos para consolidar')
+                    return
+                  }
+
+                  // Extraer el directorio del path
+                  const recordingPath = firstRecording.path.substring(0, firstRecording.path.lastIndexOf('/'))
+
+                  const response = await fetch('/api/recordings/consolidate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      recordingPath,
+                      cameraName: selectedCamera.name,
+                      scenarioName: activeScenario?.name
+                    })
+                  })
+
+                  const result = await response.json()
+
+                  if (result.success) {
+                    toast.success(`Consolidación completada: ${result.segmentsCount} segmentos unidos`)
+                    await loadRecordings(cameraId)
+                  } else {
+                    toast.error(`Error: ${result.error}`)
+                  }
+                } catch (error) {
+                  console.error('Error consolidando:', error)
+                  toast.error('Error al consolidar los segmentos')
+                }
+              }}
             />
           )}
         </div>

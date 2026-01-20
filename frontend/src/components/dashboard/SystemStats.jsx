@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { HardDrive, Activity, Gauge, Radio } from 'lucide-react'
 import { formatBytes } from '../../utils/formatters'
 
@@ -17,6 +17,20 @@ const SystemStats = ({
     activeSensors = [],
     stats = {}
 }) => {
+    // Cache for previous sensors to prevent flickering
+    const prevSensorsRef = useRef([])
+    const [displaySensors, setDisplaySensors] = useState([])
+
+    // Update display sensors only when we have actual data
+    useEffect(() => {
+        if (activeSensors.length > 0) {
+            prevSensorsRef.current = activeSensors
+            setDisplaySensors(activeSensors)
+        } else if (prevSensorsRef.current.length > 0) {
+            // Keep previous sensors if new data is empty
+            setDisplaySensors(prevSensorsRef.current)
+        }
+    }, [activeSensors])
     /**
      * Renders disk info panel
      */
@@ -93,52 +107,7 @@ const SystemStats = ({
                 </div>
             </div>
 
-            {/* Active Sensors */}
-            {activeSensors.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                        <Radio className="w-4 h-4 text-green-500" />
-                        Sensores Activos
-                    </h3>
-                    <div className="space-y-2">
-                        {activeSensors.map((sensor) => {
-                            // Format sensor value - handle objects and primitives
-                            const formatValue = (val) => {
-                                if (val === undefined || val === null) return '-'
-                                if (typeof val === 'object') {
-                                    // For xyz coordinates like accel/gyro
-                                    if ('x' in val && 'y' in val && 'z' in val) {
-                                        return `x:${val.x?.toFixed?.(1) ?? val.x} y:${val.y?.toFixed?.(1) ?? val.y} z:${val.z?.toFixed?.(1) ?? val.z}`
-                                    }
-                                    // For other objects, just show key count
-                                    return `${Object.keys(val).length} campos`
-                                }
-                                if (typeof val === 'number') return val.toFixed(2)
-                                return String(val)
-                            }
-
-                            return (
-                                <div
-                                    key={sensor.id}
-                                    className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-[120px]" title={sensor.id}>
-                                            {sensor.type || sensor.id?.split('/').pop() || 'Sensor'}
-                                        </span>
-                                    </div>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[80px]" title={String(sensor.value)}>
-                                        {formatValue(sensor.value)}
-                                    </span>
-                                </div>
-                            )
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* System Stats */}
+            {/* System Stats - Now after storage */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
                 <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                     <Activity className="w-4 h-4 text-orange-500" />
@@ -169,6 +138,69 @@ const SystemStats = ({
                             <span className="font-medium text-gray-900 dark:text-white">
                                 {stats.messagesPerSecond.toFixed(1)}
                             </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Active Sensors - Now at the bottom */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-green-500" />
+                    Sensores Activos
+                    {displaySensors.length > 0 && (
+                        <span className="ml-auto text-xs font-normal text-gray-500 dark:text-gray-400">
+                            {displaySensors.length}
+                        </span>
+                    )}
+                </h3>
+                <div className="space-y-2" style={{ minHeight: '120px' }}>
+                    {displaySensors.length > 0 ? (
+                        displaySensors.map((sensor) => {
+                            // Format sensor value - handle objects and primitives
+                            const formatValue = (val) => {
+                                if (val === undefined || val === null) return '--'
+                                if (typeof val === 'object') {
+                                    // For xyz coordinates like accel/gyro
+                                    if ('x' in val && 'y' in val && 'z' in val) {
+                                        return `x:${val.x?.toFixed?.(1) ?? '--'} y:${val.y?.toFixed?.(1) ?? '--'} z:${val.z?.toFixed?.(1) ?? '--'}`
+                                    }
+                                    // For other objects, just show key count
+                                    const keyCount = Object.keys(val).length
+                                    return keyCount > 0 ? `${keyCount} campos` : '--'
+                                }
+                                if (typeof val === 'number') return val.toFixed(2)
+                                return String(val) || '--'
+                            }
+
+                            // Get sensor name - prefer name, then type, then extract from id
+                            const sensorName = sensor.name || sensor.type || sensor.id?.split('/').pop() || 'Sensor'
+
+                            return (
+                                <div
+                                    key={sensor.id}
+                                    className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
+                                    style={{ minHeight: '36px' }}
+                                >
+                                    <div className="flex items-center gap-2 flex-shrink-0" style={{ width: '140px' }}>
+                                        <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></div>
+                                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate" title={sensor.id}>
+                                            {sensorName}
+                                        </span>
+                                    </div>
+                                    <span
+                                        className="text-xs text-gray-500 dark:text-gray-400 text-right tabular-nums"
+                                        style={{ width: '80px' }}
+                                        title={formatValue(sensor.value)}
+                                    >
+                                        {formatValue(sensor.value)}
+                                    </span>
+                                </div>
+                            )
+                        })
+                    ) : (
+                        <div className="text-center py-2 text-xs text-gray-400 dark:text-gray-500">
+                            Esperando datos de sensores...
                         </div>
                     )}
                 </div>

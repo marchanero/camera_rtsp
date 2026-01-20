@@ -376,6 +376,14 @@ class SyncRecordingService extends EventEmitter {
       console.log(`\n✅ Grabación sincronizada finalizada`)
       console.log(`   Manifest: ${manifest.manifestPath}`)
 
+      // === CONSOLIDAR SEGMENTOS (async, no bloquea) ===
+      const outputDir = videoResult?.outputDir || path.dirname(manifest.manifestPath)
+      this._consolidateInBackground(outputDir, {
+        scenarioName: session.scenarioName,
+        cameraName: session.cameraName,
+        deleteSegments: false // Mantener segmentos por seguridad
+      })
+
       // Emitir evento
       this.emit('syncRecordingStopped', {
         sessionId: session.sessionId,
@@ -583,6 +591,39 @@ class SyncRecordingService extends EventEmitter {
 
     await Promise.all(promises)
     console.log('✅ Todas las sesiones detenidas')
+  }
+
+  /**
+   * Consolida segmentos en background (async, no bloquea)
+   * @private
+   */
+  _consolidateInBackground(outputDir, options) {
+    // Ejecutar en background sin await
+    recordingManager.consolidateSegments(outputDir, options)
+      .then(result => {
+        if (result.success) {
+          console.log(`📦 Consolidación completada: ${result.outputFile}`)
+          console.log(`   Segmentos procesados: ${result.segmentsCount}`)
+        } else {
+          console.error(`⚠️ Consolidación falló: ${result.error}`)
+          console.log(`   Puedes consolidar manualmente con: POST /api/recordings/consolidate`)
+        }
+      })
+      .catch(error => {
+        console.error(`❌ Error en consolidación background:`, error)
+      })
+  }
+
+  /**
+   * Consolida manualmente los segmentos de una grabación
+   * Útil para post-procesamiento si hubo error
+   * @param {string} recordingPath - Ruta al directorio con segmentos
+   * @param {Object} options - Opciones de consolidación
+   * @returns {Promise<Object>} Resultado de la consolidación
+   */
+  async consolidateRecording(recordingPath, options = {}) {
+    console.log(`📦 Consolidación manual solicitada para: ${recordingPath}`)
+    return recordingManager.consolidateSegments(recordingPath, options)
   }
 }
 

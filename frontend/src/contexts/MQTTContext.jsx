@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { MQTTConnectionProvider, useMQTTConnection } from './mqtt/MQTTConnectionContext'
 import { MQTTMessagesProvider, useMQTTMessages } from './mqtt/MQTTMessagesContext'
 import { MQTTSensorDataProvider, useMQTTSensorData } from './mqtt/MQTTSensorDataContext'
@@ -28,10 +28,45 @@ export function MQTTProvider({ children }) {
 
 /**
  * Internal compositor component
+ * Now loads topics dynamically from the sensor-topics API
  */
 function MQTTCompositor({ children }) {
   const connection = useMQTTConnection()
   const client = connection.getClient()
+  const [dynamicTopics, setDynamicTopics] = useState([])
+  const [topicsLoaded, setTopicsLoaded] = useState(false)
+
+  // System topics (always subscribe to these)
+  const systemTopics = [
+    'camera_rtsp/sensors/#',
+    'camera_rtsp/cameras/+/recording/status',
+    'camera_rtsp/rules/#'
+  ]
+
+  // Load sensor topics from backend
+  const loadSensorTopics = useCallback(async () => {
+    try {
+      const response = await fetch('/api/mqtt/sensor-topics')
+      const data = await response.json()
+      if (data.success && Array.isArray(data.data)) {
+        const topics = data.data.map(t => t.topic)
+        setDynamicTopics(topics)
+        console.log(`📡 Topics dinámicos cargados: ${topics.length}`)
+        if (topics.length > 0) {
+          console.log('   Topics:', topics.slice(0, 5).join(', '), topics.length > 5 ? `... y ${topics.length - 5} más` : '')
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Error cargando topics de sensores:', error.message)
+    } finally {
+      setTopicsLoaded(true)
+    }
+  }, [])
+
+  // Load topics on mount
+  useEffect(() => {
+    loadSensorTopics()
+  }, [loadSensorTopics])
 
   // Auto-connect on mount
   useEffect(() => {
@@ -40,23 +75,16 @@ function MQTTCompositor({ children }) {
     }
   }, [connection.isConnected, connection.isLoadingConfig])
 
-  // Auto-subscribe to base topics when connected
+  // Auto-subscribe to topics when connected
   useEffect(() => {
-    if (!client || !connection.isConnected) return
+    if (!client || !connection.isConnected || !topicsLoaded) return
 
-    const baseTopics = [
-      'camera_rtsp/sensors/#',
-      'camera_rtsp/cameras/+/recording/status',
-      'camera_rtsp/rules/#',
-      'aula1/emotibit/#',
-      'aula2/emotibit/#',
-      'biblioteca/co2/#',
-      'invernadero/humidity/#',
-      'lab/sensors/#',
-      'aulaMagna/temperature/#'
-    ]
+    // Combine system topics with dynamic sensor topics
+    const allTopics = [...new Set([...systemTopics, ...dynamicTopics])]
 
-    baseTopics.forEach(topic => {
+    console.log(`📡 Suscribiendo a ${allTopics.length} topics (${systemTopics.length} sistema + ${dynamicTopics.length} sensores)`)
+
+    allTopics.forEach(topic => {
       client.subscribe(topic, { qos: 1 }, (error) => {
         if (error) {
           console.error(`❌ Error suscribiendo a ${topic}:`, error)
@@ -66,17 +94,17 @@ function MQTTCompositor({ children }) {
       })
     })
 
-    // Cleanup: unsubscribe on unmount
+    // Cleanup: unsubscribe on unmount or when topics change
     return () => {
-      baseTopics.forEach(topic => {
+      allTopics.forEach(topic => {
         client.unsubscribe(topic)
       })
     }
-  }, [client, connection.isConnected])
+  }, [client, connection.isConnected, topicsLoaded, dynamicTopics])
 
   return (
     <MQTTMessagesProvider mqttClient={client}>
-      <MQTTSensorDataCompositor>
+      <MQTTSensorDataCompositor reloadTopics={loadSensorTopics}>
         {children}
       </MQTTSensorDataCompositor>
     </MQTTMessagesProvider>
@@ -86,11 +114,11 @@ function MQTTCompositor({ children }) {
 /**
  * Sensor data compositor
  */
-function MQTTSensorDataCompositor({ children }) {
+function MQTTSensorDataCompositor({ children, reloadTopics }) {
   const messages = useMQTTMessages()
 
   return (
-    <MQTTSensorDataProvider mqttMessages={messages}>
+    <MQTTSensorDataProvider mqttMessages={messages} reloadTopics={reloadTopics}>
       {children}
     </MQTTSensorDataProvider>
   )

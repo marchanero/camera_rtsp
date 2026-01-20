@@ -4,12 +4,13 @@ import {
   CheckCircle, Square, Video, Activity, Link2, Filter, Wifi, WifiOff
 } from 'lucide-react'
 import { useScenario } from '../contexts/ScenarioContext'
-import { useMQTT } from '../contexts/MQTTContext'
+import { useMQTT, useMQTTSensorData } from '../contexts/MQTTContext'
 import api from '../services/api'
 
 function DeviceAssignment({ scenario, onClose }) {
   const { updateScenario } = useScenario()
   const { sensorData } = useMQTT()
+  const { reloadTopics } = useMQTTSensorData()
 
   const [cameras, setCameras] = useState([])
   const [sensors, setSensors] = useState([]) // Sensores de la BD
@@ -96,6 +97,11 @@ function DeviceAssignment({ scenario, onClose }) {
       })
 
       if (result.success) {
+        // Recargar topics MQTT para suscribirse a los nuevos sensores
+        if (reloadTopics) {
+          console.log('🔄 Recargando topics MQTT después de asignar sensores...')
+          await reloadTopics()
+        }
         onClose()
       } else {
         setError(result.message || 'Error al guardar')
@@ -251,8 +257,8 @@ function DeviceAssignment({ scenario, onClose }) {
                           key={f.key}
                           onClick={() => setSensorFilter(f.key)}
                           className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${sensorFilter === f.key
-                              ? 'bg-white dark:bg-gray-600 text-purple-600 dark:text-purple-400 shadow-sm'
-                              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-gray-600 text-purple-600 dark:text-purple-400 shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                             }`}
                         >
                           {f.label}
@@ -276,13 +282,13 @@ function DeviceAssignment({ scenario, onClose }) {
                             key={sensor.id}
                             onClick={() => handleSensorToggle(sensor.sensorId)}
                             className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all ${isSelected
-                                ? 'bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-300 dark:border-purple-700'
-                                : 'bg-gray-50 dark:bg-gray-700/30 border-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600'
+                              ? 'bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-300 dark:border-purple-700'
+                              : 'bg-gray-50 dark:bg-gray-700/30 border-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600'
                               }`}
                           >
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${isSelected
-                                ? 'bg-purple-500 text-white'
-                                : 'bg-gray-200 dark:bg-gray-600'
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-gray-200 dark:bg-gray-600'
                               }`}>
                               {isSelected ? (
                                 <CheckCircle className="w-4 h-4" />

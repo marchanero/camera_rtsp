@@ -337,6 +337,52 @@ router.post('/sync/stop-all', async (req, res) => {
     res.status(500).json({ success: false, error: error.message })
   }
 })
+/**
+ * POST /api/recordings/consolidate
+ * Consolida manualmente los segmentos de video de una grabación
+ * Útil para post-procesamiento si la consolidación automática falló
+ * 
+ * Body:
+ * - recordingPath: string (ruta al directorio con segmentos)
+ * - deleteSegments: boolean (opcional, eliminar segmentos después)
+ */
+router.post('/consolidate', async (req, res) => {
+  try {
+    const { recordingPath, deleteSegments = false, scenarioName, cameraName } = req.body
+    
+    if (!recordingPath) {
+      return res.status(400).json({
+        success: false,
+        error: 'Se requiere recordingPath'
+      })
+    }
+
+    console.log(`📦 Solicitud de consolidación manual: ${recordingPath}`)
+    
+    const result = await syncRecordingService.consolidateRecording(recordingPath, {
+      deleteSegments,
+      scenarioName,
+      cameraName
+    })
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Consolidación completada',
+        outputFile: result.outputFile,
+        segmentsCount: result.segmentsCount
+      })
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error
+      })
+    }
+  } catch (error) {
+    console.error('Error en consolidación manual:', error)
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
 
 export default router
 
