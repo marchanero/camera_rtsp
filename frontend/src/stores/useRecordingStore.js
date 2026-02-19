@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useNotificationStore } from './useNotificationStore'
 
 /**
  * useRecordingStore — Zustand store for recording state management
@@ -187,6 +188,13 @@ export const useRecordingStore = create(
             startedAt: new Date().toISOString()
           }))
 
+          useNotificationStore.getState().addNotification({
+            type: 'recording',
+            title: `Grabación iniciada`,
+            message: `${cameraName}${options.scenarioName ? ` — ${options.scenarioName}` : ''}`,
+            source: 'grabación'
+          })
+
           return { success: true, data }
 
         } catch (error) {
@@ -196,6 +204,12 @@ export const useRecordingStore = create(
             cameraName,
             error: error.message
           }))
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            title: `Error al iniciar grabación`,
+            message: error.message,
+            source: cameraName
+          })
           return { success: false, error: error.message }
         }
       },
@@ -228,6 +242,14 @@ export const useRecordingStore = create(
             return next
           })
 
+          const stopped = _getMap().get(cameraId)
+          useNotificationStore.getState().addNotification({
+            type: 'recording',
+            title: `Grabación detenida`,
+            message: stopped?.cameraName || `Cámara ${cameraId}`,
+            source: 'grabación'
+          })
+
           return { success: true, data }
 
         } catch (error) {
@@ -241,6 +263,12 @@ export const useRecordingStore = create(
               })
             }
             return prev
+          })
+          useNotificationStore.getState().addNotification({
+            type: 'error',
+            title: `Error al detener grabación`,
+            message: error.message,
+            source: `Cámara ${cameraId}`
           })
           return { success: false, error: error.message }
         }

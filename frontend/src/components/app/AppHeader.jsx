@@ -1,4 +1,5 @@
 import { Dog, Sun, Moon, Wifi, WifiOff, Circle, LayoutDashboard, Video, Settings, Sliders } from 'lucide-react'
+import NotificationPanel from '../NotificationPanel'
 
 /**
  * AppHeader - Application header with logo, status badges, and navigation tabs
@@ -38,8 +39,8 @@ export default function AppHeader({
                     <div className="flex items-center gap-3">
                         {/* Server Status */}
                         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${serverStatus === 'online'
-                                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                                : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
+                            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                            : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
                             }`}>
                             {serverStatus === 'online' ? (
                                 <><Wifi className="w-3.5 h-3.5" /> En línea</>
@@ -55,6 +56,9 @@ export default function AppHeader({
                                 {activeRecordingsCount} Grabando
                             </div>
                         )}
+
+                        {/* Notification Bell */}
+                        <NotificationPanel />
 
                         {/* Theme Toggle */}
                         <button
@@ -79,8 +83,8 @@ export default function AppHeader({
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`group flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 ${isActive
-                                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                                     }`}
                             >
                                 <Icon className={`w-4 h-4 transition-transform group-hover:scale-110 ${isActive ? 'text-blue-500' : ''}`} />
