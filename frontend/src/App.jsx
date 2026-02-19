@@ -5,6 +5,7 @@ import { RecordingProvider } from './contexts/RecordingContext'
 import { MQTTProvider } from './contexts/MQTTContext'
 import { ScenarioProvider } from './contexts/ScenarioContext'
 import AppContent from './components/app/AppContent'
+import AppErrorBoundary from './components/AppErrorBoundary'
 
 /**
  * App - Root component with providers
@@ -17,39 +18,41 @@ import AppContent from './components/app/AppContent'
  */
 function App() {
   return (
-    <ThemeProvider>
-      <ScenarioProvider>
-        <MQTTProvider>
-          <RecordingProvider>
-            <AppContent />
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                duration: 4000,
-                style: {
-                  background: '#1f2937',
-                  color: '#f9fafb',
-                  borderRadius: '12px',
-                  padding: '12px 16px',
-                },
-                success: {
-                  iconTheme: {
-                    primary: '#10b981',
-                    secondary: '#f9fafb',
+    <AppErrorBoundary>
+      <ThemeProvider>
+        <ScenarioProvider>
+          <MQTTProvider>
+            <RecordingProvider>
+              <AppContent />
+              <Toaster
+                position="bottom-right"
+                toastOptions={{
+                  duration: 4000,
+                  style: {
+                    background: '#1f2937',
+                    color: '#f9fafb',
+                    borderRadius: '12px',
+                    padding: '12px 16px',
                   },
-                },
-                error: {
-                  iconTheme: {
-                    primary: '#ef4444',
-                    secondary: '#f9fafb',
+                  success: {
+                    iconTheme: {
+                      primary: '#10b981',
+                      secondary: '#f9fafb',
+                    },
                   },
-                },
-              }}
-            />
-          </RecordingProvider>
-        </MQTTProvider>
-      </ScenarioProvider>
-    </ThemeProvider>
+                  error: {
+                    iconTheme: {
+                      primary: '#ef4444',
+                      secondary: '#f9fafb',
+                    },
+                  },
+                }}
+              />
+            </RecordingProvider>
+          </MQTTProvider>
+        </ScenarioProvider>
+      </ThemeProvider>
+    </AppErrorBoundary>
   )
 }
 

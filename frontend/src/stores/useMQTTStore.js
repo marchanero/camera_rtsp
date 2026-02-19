@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import mqtt from 'mqtt'
 import axios from 'axios'
+import { useNotificationStore } from './useNotificationStore'
 
 const API_BASE = ''
 
@@ -44,6 +45,8 @@ export const useMQTTStore = create((set, get) => ({
   _client: null,
   _pendingMessages: [],
   _pendingCount: 0,
+  _pendingSensorUpdates: new Map(), // sensorId → mergedData — flushed every 250ms
+  _pendingCameraStatus: {},         // cameraId → status — flushed every 250ms
   _messageCount: 0,
   _lastRateUpdate: Date.now(),
   _messageHandlers: new Map(),
@@ -144,17 +147,35 @@ export const useMQTTStore = create((set, get) => ({
         get()._resetBackoff()
         // Auto-subscribe after connect
         get()._subscribeToTopics()
+        useNotificationStore.getState().addNotification({
+          type: 'info',
+          title: 'MQTT conectado',
+          message: `Broker: ${mqttConfig.wsUrl}`,
+          source: 'MQTT'
+        })
       })
 
       client.on('error', (err) => {
         console.error('❌ MQTT Error:', err.message)
         set({ error: err.message })
+        useNotificationStore.getState().addNotification({
+          type: 'error',
+          title: 'Error MQTT',
+          message: err.message,
+          source: 'MQTT'
+        })
       })
 
       client.on('close', () => {
         console.log('🔌 MQTT desconectado')
         set({ isConnected: false })
         if (!get()._client?.reconnecting) {
+          useNotificationStore.getState().addNotification({
+            type: 'warning',
+            title: 'MQTT desconectado',
+            message: 'Intentando reconectar...',
+            source: 'MQTT'
+          })
           get()._scheduleReconnect()
         }
       })
@@ -368,8 +389,21 @@ export const useMQTTStore = create((set, get) => ({
       // Accumulate in buffer
       state._pendingMessages.push(msg)
 
-      // Process sensor data synchronously
+      // Process sensor data (throttled — no set() call here)
       state._processSensorData(topic, payload)
+
+      // Wire rule:triggered → notification store
+      if (topic.startsWith('camera_rtsp/rules/') && topic.includes('/triggered')) {
+        try {
+          const data = JSON.parse(payload)
+          useNotificationStore.getState().addNotification({
+            type: 'rule',
+            title: `Regla activada: ${data.ruleName || data.name || 'Regla desconocida'}`,
+            message: data.description || data.condition || topic,
+            source: 'reglas'
+          })
+        } catch { /* ignore parse errors */ }
+      }
 
       // Call custom handlers
       state._messageHandlers.forEach(handler => {
@@ -380,6 +414,7 @@ export const useMQTTStore = create((set, get) => ({
       console.error('Error procesando mensaje MQTT:', error)
     }
   },
+
 
   _processSensorData: (topic, payload) => {
     try {
@@ -402,56 +437,51 @@ export const useMQTTStore = create((set, get) => ({
         const sensorId = data.sensorId || data.sensor_id || data.device_id ||
           topicParts.slice(-2, -1)[0] || topic
 
-        set(prev => {
-          const newMap = new Map(prev.sensorData)
-          const existingData = prev.sensorData.get(sensorId) || { values: {} }
+        // --- THROTTLE: accumulate into _pendingSensorUpdates instead of set() ---
+        // Merged with current sensorData AND any already-pending update for this sensor.
+        const currentData = state._pendingSensorUpdates.get(sensorId)
+          || state.sensorData.get(sensorId)
+          || { values: {} }
 
-          const mergedData = {
-            ...existingData,
-            timestamp: data.timestamp || new Date().toISOString(),
-            topic,
-            sensorId
+        const mergedData = {
+          ...currentData,
+          timestamp: data.timestamp || new Date().toISOString(),
+          topic,
+          sensorId
+        }
+
+        if (variableName && variableName !== sensorId) {
+          const existingPayload = currentData.values?.[variableName] || {}
+          const mergedPayload = { ...existingPayload, ...data }
+
+          const sensorKeys = ['ppg', 'eda', 'temp', 'acc', 'gyr', 'mag', 'hr']
+          for (const key of sensorKeys) {
+            if (existingPayload[key] && !data[key]) {
+              mergedPayload[key] = existingPayload[key]
+            }
           }
 
-          if (variableName && variableName !== sensorId) {
-            const existingPayload = existingData.values?.[variableName] || {}
-            const mergedPayload = { ...existingPayload, ...data }
-
-            const sensorKeys = ['ppg', 'eda', 'temp', 'acc', 'gyr', 'mag', 'hr']
-            for (const key of sensorKeys) {
-              if (existingPayload[key] && !data[key]) {
-                mergedPayload[key] = existingPayload[key]
-              }
-            }
-
-            mergedData.values = {
-              ...(existingData.values || {}),
-              [variableName]: mergedPayload
-            }
-            mergedData[variableName] = mergedPayload
-          } else {
-            Object.assign(mergedData, data)
+          mergedData.values = {
+            ...(currentData.values || {}),
+            [variableName]: mergedPayload
           }
+          mergedData[variableName] = mergedPayload
+        } else {
+          Object.assign(mergedData, data)
+        }
 
-          newMap.set(sensorId, mergedData)
-          return { sensorData: newMap }
-        })
+        state._pendingSensorUpdates.set(sensorId, mergedData)
       }
 
-      // Camera recording status
+      // Camera recording status — also buffered
       if (get().matchTopic(topic, 'camera_rtsp/cameras/+/recording/status')) {
         const data = JSON.parse(payload)
         const cameraId = topic.split('/')[2]
-        set(prev => ({
-          cameraStatus: {
-            ...prev.cameraStatus,
-            [cameraId]: {
-              isRecording: data.isRecording,
-              startTime: data.startTime,
-              timestamp: new Date().toISOString()
-            }
-          }
-        }))
+        get()._pendingCameraStatus[cameraId] = {
+          isRecording: data.isRecording,
+          startTime: data.startTime,
+          timestamp: new Date().toISOString()
+        }
       }
     } catch (error) {
       // Silently ignore parse errors for non-JSON messages
@@ -459,26 +489,53 @@ export const useMQTTStore = create((set, get) => ({
   },
 
   /**
-   * Flush buffer cada 250ms — mantiene el batching del Fix 1
+   * Flush buffer cada 250ms — drena mensajes Y actualizaciones de sensores.
+   * 
+   * Antes: _processSensorData llamaba set() sincrónicamente por cada mensaje,
+   * causando 25 re-renders/s con EmotiBit a 25Hz.
+   * Ahora: acumula en _pendingSensorUpdates y aplica en un solo set() aquí.
    */
   _startFlushInterval: () => {
     const interval = setInterval(() => {
       const state = get()
       const pending = state._pendingMessages
       const count = state._pendingCount
+      const sensorUpdates = state._pendingSensorUpdates
+      const cameraUpdates = state._pendingCameraStatus
 
-      if (pending.length === 0) return
+      const hasMessages = pending.length > 0
+      const hasSensors = sensorUpdates.size > 0
+      const hasCamera = Object.keys(cameraUpdates).length > 0
 
-      // Clear buffer
+      if (!hasMessages && !hasSensors && !hasCamera) return
+
+      // Clear buffers (direct mutation, not reactive)
       state._pendingMessages = []
       state._pendingCount = 0
+      state._pendingSensorUpdates = new Map()
+      state._pendingCameraStatus = {}
 
-      // Single set() for all three values
-      set(prev => ({
-        messages: [...prev.messages, ...pending].slice(-100),
-        lastMessage: pending[pending.length - 1],
-        totalMessages: prev.totalMessages + count
-      }))
+      set(prev => {
+        const next = {}
+
+        if (hasMessages) {
+          next.messages = [...prev.messages, ...pending].slice(-100)
+          next.lastMessage = pending[pending.length - 1]
+          next.totalMessages = prev.totalMessages + count
+        }
+
+        if (hasSensors) {
+          const newMap = new Map(prev.sensorData)
+          sensorUpdates.forEach((data, id) => newMap.set(id, data))
+          next.sensorData = newMap
+        }
+
+        if (hasCamera) {
+          next.cameraStatus = { ...prev.cameraStatus, ...cameraUpdates }
+        }
+
+        return next
+      })
     }, 250)
 
     get()._flushInterval = interval
