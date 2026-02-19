@@ -1,5 +1,5 @@
 import React from 'react'
-import { Theater, Clock, Wifi, WifiOff, RefreshCw } from 'lucide-react'
+import { Theater, Clock, Wifi, WifiOff, RefreshCw, ChevronDown } from 'lucide-react'
 import { formatTime } from '../../utils/formatters'
 
 /**
@@ -12,6 +12,7 @@ import { formatTime } from '../../utils/formatters'
  * - Sync service status
  */
 const StatusBar = ({
+    scenarios = [],
     activeScenario,
     onScenarioChange,
     recordingState = 'idle',
@@ -25,20 +26,32 @@ const StatusBar = ({
             <div className="flex items-center justify-between flex-wrap gap-3">
                 {/* Escenario Activo */}
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                        <Theater className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                        <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                            {activeScenario?.name || 'Sin escenario'}
-                        </span>
-                        {activeScenario && (
-                            <button
-                                onClick={() => onScenarioChange(null)}
-                                className="ml-1 text-purple-400 hover:text-purple-600 dark:hover:text-purple-300"
-                                title="Desactivar escenario"
-                            >
-                                ×
-                            </button>
-                        )}
+                    <div className="relative flex items-center bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors group">
+                        <div className="pl-3 pr-2 py-1.5 pointer-events-none flex items-center gap-2">
+                            <Theater className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <select
+                            value={activeScenario?.id || ''}
+                            onChange={(e) => {
+                                const val = e.target.value
+                                if (!val) {
+                                    onScenarioChange(null)
+                                } else {
+                                    const selected = scenarios.find(s => s.id === parseInt(val))
+                                    if (selected) onScenarioChange(selected)
+                                }
+                            }}
+                            className="appearance-none bg-transparent border-none text-sm font-medium text-purple-700 dark:text-purple-300 focus:ring-0 pl-1 pr-8 py-1.5 cursor-pointer outline-none w-40 sm:w-auto text-ellipsis overflow-hidden truncate"
+                            title="Seleccionar escenario activo"
+                        >
+                            <option value="">Sin escenario</option>
+                            {scenarios.map(sc => (
+                                <option key={sc.id} value={sc.id}>{sc.name}</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-2.5 pointer-events-none flex flex-col items-center">
+                            <ChevronDown className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300" />
+                        </div>
                     </div>
 
                     {activeScenario && (
