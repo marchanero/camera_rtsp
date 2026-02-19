@@ -13,12 +13,13 @@ class WebRTCService {
     this.RECORDINGS_DIR = path.join(process.cwd(), 'recordings')
     
     // Perfiles de calidad para diferentes necesidades
+    // threads: use all available cores for software HEVC decode
     this.qualityProfiles = {
-      'ultra': { scale: null, fps: 30, quality: 2, threads: 4 },        // Original, máxima calidad
-      'high': { scale: '2560:776', fps: 30, quality: 3, threads: 4 },   // 50% reducción
-      'medium': { scale: '1920:580', fps: 30, quality: 3, threads: 4 }, // 37.5% tamaño (~equilibrado)
-      'low': { scale: '1280:387', fps: 25, quality: 4, threads: 2 },    // 25% tamaño (más fluido)
-      'mobile': { scale: '960:290', fps: 20, quality: 5, threads: 2 }   // Para redes lentas
+      'ultra':  { scale: null,       fps: 25, quality: 2, threads: 4 },  // Original, sin escalar
+      'high':   { scale: '1920:576', fps: 20, quality: 3, threads: 4 },  // ~35% del original
+      'medium': { scale: '1280:384', fps: 15, quality: 4, threads: 4 },  // equilibrio real
+      'low':    { scale: '960:288',  fps: 12, quality: 5, threads: 4 },  // fluido en red moderada
+      'mobile': { scale: '640:192',  fps: 8,  quality: 6, threads: 4 }   // mínimo — redes lentas
     }
     
     if (!fs.existsSync(this.RECORDINGS_DIR)) {
@@ -54,30 +55,34 @@ class WebRTCService {
     console.log(`🎥 Iniciando stream WebRTC: ${camera.name} [${effectiveQuality.toUpperCase()}] (persistido: ${effectiveQuality !== quality})`)
     console.log(`📊 Perfil: ${profile.scale || 'Original'}, ${profile.fps} FPS, Quality ${profile.quality}, ${profile.threads} threads`)
     
-    // FFmpeg optimizado: RTSP → JPEG frames via stdout
+    // FFmpeg optimizado: RTSP (HEVC 5K) → JPEG frames via stdout
+    // Key: -probesize/analyzeduration minimize startup delay
+    //      -threads uses all CPU cores for software HEVC decode
+    //      vf fps= throttles decode before scale (cheaper than -r on output)
+    //      -drop_pkts_on_overflow prevents buffer stall under load
+    const vfFilters = [`fps=${profile.fps}`]
+    if (profile.scale) vfFilters.push(`scale=${profile.scale}`)
+
     const ffmpegArgs = [
-      '-rtsp_transport', 'tcp',
-      '-fflags', 'nobuffer',
+      // Input: minimize buffering and probe latency
+      '-probesize', '32',
+      '-analyzeduration', '0',
+      '-fflags', 'nobuffer+discardcorrupt',
       '-flags', 'low_delay',
-      '-strict', 'experimental',
-      '-i', camera.rtspUrl
-    ]
-    
-    // Agregar escalado si el perfil lo especifica
-    if (profile.scale) {
-      ffmpegArgs.push('-vf', `scale=${profile.scale}`)
-    }
-    
-    ffmpegArgs.push(
+      '-rtsp_transport', 'tcp',
+      '-i', camera.rtspUrl,
+      // Decode with all cores
+      '-threads', profile.threads.toString(),
+      // Filter: throttle fps first, then scale (order matters — cheaper)
+      '-vf', vfFilters.join(','),
+      // Encode to JPEG
       '-f', 'image2pipe',
       '-vcodec', 'mjpeg',
       '-q:v', profile.quality.toString(),
-      '-r', profile.fps.toString(),
-      '-preset', 'ultrafast',
-      '-threads', profile.threads.toString(),
-      '-tune', 'zerolatency',
+      // Drop frames on overflow instead of stalling
+      '-drop_pkts_on_overflow', '1',
       'pipe:1'
-    )
+    ]
 
     const ffmpegProcess = spawn('ffmpeg', ffmpegArgs)
     

@@ -6,11 +6,11 @@ import {
 
 // Quality profiles — must match backend qualityProfiles keys
 const QUALITY_PROFILES = [
-  { value: 'mobile', label: 'Mobile', badge: '📱', desc: '960×290 · 20 fps', hint: 'Redes lentas / baja potencia' },
-  { value: 'low', label: 'Baja', badge: '🔽', desc: '1280×387 · 25 fps', hint: 'Fluido en redes moderadas' },
-  { value: 'medium', label: 'Media', badge: '⚖️', desc: '1920×580 · 30 fps', hint: 'Equilibrio calidad/rendimiento' },
-  { value: 'high', label: 'Alta', badge: '🔼', desc: '2560×776 · 30 fps', hint: 'Alta calidad, más ancho de banda' },
-  { value: 'ultra', label: 'Ultra', badge: '💎', desc: 'Original · 30 fps', hint: 'Máxima calidad, sin escalado' },
+  { value: 'mobile', label: 'Mobile', badge: '📱', desc: '640×192 · 8 fps', hint: 'Redes muy lentas — máxima fluidez' },
+  { value: 'low', label: 'Baja', badge: '🔽', desc: '960×288 · 12 fps', hint: 'Fluido en redes moderadas' },
+  { value: 'medium', label: 'Media', badge: '⚖️', desc: '1280×384 · 15 fps', hint: 'Equilibrio calidad/rendimiento (recomendado)' },
+  { value: 'high', label: 'Alta', badge: '🔼', desc: '1920×576 · 20 fps', hint: 'Alta calidad, más ancho de banda' },
+  { value: 'ultra', label: 'Ultra', badge: '💎', desc: 'Original · 25 fps', hint: 'Sin escalado — máxima calidad' },
 ]
 
 const QUALITY_KEY = (cameraId) => `webrtc-quality-${cameraId}`
@@ -38,6 +38,7 @@ export default function WebRTCViewer({ camera }) {
   const lastFpsRef = useRef(Date.now())
   const renderQueueRef = useRef([])
   const isRenderingRef = useRef(false)
+  const isDecodingRef = useRef(false)  // Guard: drop frames if decode is in progress
   const qualityMenuRef = useRef(null)
 
   // Close quality menu on outside click
@@ -104,9 +105,14 @@ export default function WebRTCViewer({ camera }) {
           }
           return
         }
+        // Backpressure guard: drop incoming frame if still decoding the previous one.
+        // This prevents Blob objects from accumulating and stalling the UI thread.
+        if (isDecodingRef.current) return
+        isDecodingRef.current = true
         try {
           const bitmap = await createImageBitmap(new Blob([event.data], { type: 'image/jpeg' }))
-          renderQueueRef.current.push(bitmap)
+          // Replace the queue with just the latest frame (skip stale ones)
+          renderQueueRef.current = [bitmap]
           if (!isRenderingRef.current) {
             isRenderingRef.current = true
             requestAnimationFrame(renderFrames)
@@ -119,7 +125,9 @@ export default function WebRTCViewer({ camera }) {
             frameCountRef.current = 0
             lastFpsRef.current = now
           }
-        } catch { }
+        } catch { } finally {
+          isDecodingRef.current = false
+        }
       }
 
       ws.onerror = () => { setError('Error de conexión WebSocket'); setStatus('error') }
