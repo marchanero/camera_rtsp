@@ -99,6 +99,18 @@ class MediaServerManager {
   }
 
   async start() {
+    // Fix 5: Liberar puertos si están ocupados por procesos zombie de arranques anteriores
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execP = promisify(exec)
+      await execP(`fuser -k ${config.http.port}/tcp ${config.rtmp.port}/tcp 2>/dev/null || true`)
+      await new Promise(r => setTimeout(r, 500)) // esperar a que los sockets se cierren
+      console.log(`🧹 Puertos ${config.http.port}/${config.rtmp.port} liberados`)
+    } catch (_) {
+      // fuser puede no estar disponible en todos los sistemas, ignorar
+    }
+
     return new Promise((resolve, reject) => {
       try {
         this.nms = new NodeMediaServer(config)

@@ -9,6 +9,7 @@ import path from 'path'
 class WebRTCService {
   constructor() {
     this.streams = new Map() // Map<cameraId, {process, clients}>
+    this.lastQualityProfile = new Map() // Map<cameraId, quality> — persiste calidad entre reconexiones
     this.RECORDINGS_DIR = path.join(process.cwd(), 'recordings')
     
     // Perfiles de calidad para diferentes necesidades
@@ -42,9 +43,15 @@ class WebRTCService {
       return streamId
     }
 
+    // Fix 2: Usar el último perfil conocido para esta cámara si el cliente no especifica uno distinto al default
+    const effectiveQuality = (quality !== 'medium')
+      ? quality
+      : (this.lastQualityProfile.get(camera.id) || quality)
+    this.lastQualityProfile.set(camera.id, effectiveQuality)
+
     // Obtener perfil de calidad
-    const profile = this.qualityProfiles[quality] || this.qualityProfiles['medium']
-    console.log(`🎥 Iniciando stream WebRTC: ${camera.name} [${quality.toUpperCase()}]`)
+    const profile = this.qualityProfiles[effectiveQuality] || this.qualityProfiles['medium']
+    console.log(`🎥 Iniciando stream WebRTC: ${camera.name} [${effectiveQuality.toUpperCase()}] (persistido: ${effectiveQuality !== quality})`)
     console.log(`📊 Perfil: ${profile.scale || 'Original'}, ${profile.fps} FPS, Quality ${profile.quality}, ${profile.threads} threads`)
     
     // FFmpeg optimizado: RTSP → JPEG frames via stdout
@@ -101,18 +108,16 @@ class WebRTCService {
       while (start !== -1 && end !== -1 && end > start) {
         const frame = buffer.slice(start, end + 2)
         
-        // Enviar frame a todos los clientes (sin bloquear)
-        setImmediate(() => {
-          clients.forEach(client => {
-            if (client.readyState === 1) { // WebSocket.OPEN
-              try {
-                client.send(frame, { binary: true })
-              } catch (error) {
-                console.error('Error enviando frame:', error.message)
-                clients.delete(client)
-              }
+        // Fix 4: Enviar frames directamente sin setImmediate para evitar acumulación de callbacks
+        clients.forEach(client => {
+          if (client.readyState === 1) { // WebSocket.OPEN
+            try {
+              client.send(frame, { binary: true })
+            } catch (error) {
+              console.error('Error enviando frame:', error.message)
+              clients.delete(client)
             }
-          })
+          }
         })
         
         // Contador de frames

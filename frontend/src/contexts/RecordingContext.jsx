@@ -43,8 +43,8 @@ export function RecordingProvider({ children }) {
   useEffect(() => {
     let pollingInterval = null
     let attempts = 0
-    const FAST_POLLING_DURATION = 10000 // 10 segundos
-    const POLLING_INTERVAL = 2000 // 2 segundos
+    const FAST_POLLING_DURATION = 10000 // 10 segundos máximo
+    const POLLING_INTERVAL = 5000 // Fix 3: aumentado de 2s a 5s para reducir carga al inicio
 
     const performSync = async () => {
       try {
@@ -113,7 +113,15 @@ export function RecordingProvider({ children }) {
           return updated.size !== prev.size || hasChanges ? updated : prev
         })
 
-        if (!initialSyncDone) setInitialSyncDone(true)
+        if (!initialSyncDone) {
+          setInitialSyncDone(true)
+          // Fix 3: Detener polling inmediatamente tras primer sync exitoso
+          if (pollingInterval) {
+            clearInterval(pollingInterval)
+            pollingInterval = null
+            console.log('⏹️ Polling inicial detenido tras primer sync exitoso')
+          }
+        }
 
       } catch (error) {
         console.error('❌ Error sincronizando estado:', error)
