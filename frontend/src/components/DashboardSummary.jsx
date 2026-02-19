@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRecording } from '../contexts/RecordingContext'
-import { useMQTT } from '../contexts/MQTTContext'
+import { useMQTTStore } from '../stores/useMQTTStore'
 import { useScenario } from '../contexts/ScenarioContext'
 import api from '../services/api'
 import { toast } from 'react-hot-toast'
@@ -73,13 +73,11 @@ const DashboardSummary = () => {
     isSyncing
   } = useRecording()
 
-  const {
-    sensorData,
-    messageRate,
-    totalMessages,
-    isConnected: mqttConnected,
-    error: mqttError
-  } = useMQTT()
+  const sensorData = useMQTTStore(s => s.sensorData)
+  const messageRate = useMQTTStore(s => s.messageRate)
+  const totalMessages = useMQTTStore(s => s.totalMessages)
+  const mqttConnected = useMQTTStore(s => s.isConnected)
+  const mqttError = useMQTTStore(s => s.error)
 
   const {
     activeScenario,

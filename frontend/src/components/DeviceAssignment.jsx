@@ -4,13 +4,13 @@ import {
   CheckCircle, Square, Video, Activity, Link2, Filter, Wifi, WifiOff
 } from 'lucide-react'
 import { useScenario } from '../contexts/ScenarioContext'
-import { useMQTT, useMQTTSensorData } from '../contexts/MQTTContext'
+import { useMQTTStore } from '../stores/useMQTTStore'
 import api from '../services/api'
 
 function DeviceAssignment({ scenario, onClose }) {
   const { updateScenario } = useScenario()
-  const { sensorData } = useMQTT()
-  const { reloadTopics } = useMQTTSensorData()
+  const sensorData = useMQTTStore(s => s.sensorData)
+  const reloadTopics = useMQTTStore(s => s.reloadTopics)
 
   const [cameras, setCameras] = useState([])
   const [sensors, setSensors] = useState([]) // Sensores de la BD

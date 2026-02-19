@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react'
-import { useMQTT } from '../contexts/MQTTContext'
+import { useMQTTStore } from '../stores/useMQTTStore'
 import { useScenario } from '../contexts/ScenarioContext'
 import { useEmqxData } from '../hooks/useEmqxData'
 import { calculateHeartRate, resetHeartRateCalculator } from '../utils/heartRateCalculator'
@@ -31,7 +31,9 @@ import {
 } from 'lucide-react'
 
 function SensorsDashboard() {
-  const { isConnected, sensorData, lastMessage } = useMQTT()
+  const isConnected = useMQTTStore(s => s.isConnected)
+  const sensorData = useMQTTStore(s => s.sensorData)
+  const lastMessage = useMQTTStore(s => s.lastMessage)
   const {
     clusterStats,
     sensorClients,
