@@ -71,7 +71,8 @@ export const useMQTTStore = create((set, get) => ({
   _systemTopics: [
     'camera_rtsp/sensors/#',
     'camera_rtsp/cameras/+/recording/status',
-    'camera_rtsp/rules/#'
+    'camera_rtsp/rules/#',
+    'camera_rtsp/system/active_scenario'
   ],
 
   // ═══════════════════════════════════════════════════════════════

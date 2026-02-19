@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { useMQTTStore } from '../stores/useMQTTStore'
 
 const ScenarioContext = createContext()
 
@@ -28,6 +29,44 @@ export function ScenarioProvider({ children }) {
     }
   }, [scenarios])
 
+  // Escuchar cambios MQTT en el escenario activo para sincronización multi-dispositivo
+  useEffect(() => {
+    const mqttStore = useMQTTStore.getState()
+
+    mqttStore.registerHandler('scenarioSync', (topic, payload) => {
+      if (topic === 'camera_rtsp/system/active_scenario') {
+        try {
+          const data = JSON.parse(payload)
+          const newId = data ? data.id : null
+
+          setActiveScenario(prev => {
+            if (prev?.id === newId || (!prev && !newId)) return prev // Sin cambios
+
+            if (newId === null) {
+              console.log('📡 [MQTT] Escenario activo limpiado remotamente')
+              localStorage.removeItem('activeScenarioId')
+              return null
+            }
+
+            const newScenario = scenarios.find(s => s.id === parseInt(newId))
+            if (newScenario) {
+              console.log('📡 [MQTT] Escenario activado remotamente:', newScenario.name)
+              localStorage.setItem('activeScenarioId', newScenario.id.toString())
+              return newScenario
+            }
+            return prev
+          })
+        } catch (err) {
+          console.error('Error parseando payload de escenario MQTT', err)
+        }
+      }
+    })
+
+    return () => {
+      mqttStore.unregisterHandler('scenarioSync')
+    }
+  }, [scenarios])
+
   // Obtener todos los escenarios
   const fetchScenarios = async () => {
     try {
@@ -35,7 +74,7 @@ export function ScenarioProvider({ children }) {
       setError(null)
       const response = await fetch('/api/scenarios')
       const data = await response.json()
-      
+
       if (data.success) {
         setScenarios(data.data)
       } else {
@@ -59,9 +98,9 @@ export function ScenarioProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(scenarioData)
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setScenarios(prev => [data.data, ...prev])
         return { success: true, data: data.data }
@@ -88,17 +127,17 @@ export function ScenarioProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(scenarioData)
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setScenarios(prev => prev.map(s => s.id === id ? data.data : s))
-        
+
         // Actualizar escenario activo si es el que se editó
         if (activeScenario?.id === id) {
           setActiveScenario(data.data)
         }
-        
+
         return { success: true, data: data.data }
       } else {
         setError(data.message || 'Error al actualizar escenario')
@@ -121,18 +160,18 @@ export function ScenarioProvider({ children }) {
       const response = await fetch(`/api/scenarios/${id}`, {
         method: 'DELETE'
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setScenarios(prev => prev.filter(s => s.id !== id))
-        
+
         // Limpiar escenario activo si es el que se eliminó
         if (activeScenario?.id === id) {
           setActiveScenario(null)
           localStorage.removeItem('activeScenarioId')
         }
-        
+
         return { success: true }
       } else {
         setError(data.message || 'Error al eliminar escenario')
@@ -147,15 +186,27 @@ export function ScenarioProvider({ children }) {
     }
   }
 
-  // Activar/Desactivar un escenario (con persistencia)
-  const activateScenario = (scenario) => {
+  // Activar/Desactivar un escenario (con persistencia y broadcast MQTT)
+  const activateScenario = async (scenario) => {
     setActiveScenario(scenario)
+    const mqttStore = useMQTTStore.getState()
+
     if (scenario) {
       localStorage.setItem('activeScenarioId', scenario.id.toString())
       console.log('💾 Escenario guardado en localStorage:', scenario.name, '(ID:', scenario.id, ')')
+
+      // Broadcast MQTT para otros clientes (retener para que los nuevos lo reciban)
+      try {
+        await mqttStore.publish('camera_rtsp/system/active_scenario', JSON.stringify({ id: scenario.id }), { retain: true })
+      } catch (err) { }
     } else {
       localStorage.removeItem('activeScenarioId')
       console.log('🗑️ Escenario activo eliminado de localStorage')
+
+      // Limpiar MQTT
+      try {
+        await mqttStore.publish('camera_rtsp/system/active_scenario', JSON.stringify({ id: null }), { retain: true })
+      } catch (err) { }
     }
   }
 
@@ -200,17 +251,17 @@ export function ScenarioProvider({ children }) {
     activeScenario,
     loading,
     error,
-    
+
     // Acciones CRUD
     fetchScenarios,
     createScenario,
     updateScenario,
     deleteScenario,
-    
+
     // Activación con persistencia
     activateScenario,
     setActiveScenario: setActiveScenarioWithPersistence, // Alias para compatibilidad
-    
+
     // Helpers
     getActiveCameras,
     getActiveSensors,
