@@ -73,9 +73,10 @@ export const useEmqxData = (autoRefresh = true, interval = 10000) => {
     }
   }, [])
 
-  // Fetch inicial
+  // Fetch inicial — diferido 3s para no bloquear la carga de la app
   useEffect(() => {
-    fetchData()
+    const initialDelay = setTimeout(fetchData, 3000)
+    return () => clearTimeout(initialDelay)
   }, [fetchData])
 
   // Auto-refresh

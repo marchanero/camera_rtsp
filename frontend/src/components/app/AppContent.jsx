@@ -1,19 +1,33 @@
-import { useEffect } from 'react'
-import { Video, Plus, RefreshCw, Radio } from 'lucide-react'
+import { useEffect, lazy, Suspense } from 'react'
+import { Video, Plus, RefreshCw, Radio, Loader2 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useRecording } from '../../contexts/RecordingContext'
 import { useScenario } from '../../contexts/ScenarioContext'
 import { useAppState } from '../../hooks/app/useAppState'
 import AppHeader from './AppHeader'
-import ConfigurationContent from './ConfigurationContent'
 import CameraList from '../CameraList'
 import WebRTCViewer from '../WebRTCViewer'
 import CameraModal from '../CameraModal'
 import ConfirmModal from '../ConfirmModal'
-import SensorsDashboard from '../SensorsDashboard'
-import RulesManager from '../RulesManager'
-import DashboardSummary from '../DashboardSummary'
 import { ListItemSkeleton } from '../ui/Skeleton'
+
+// Lazy load de tabs pesados — solo se descargan cuando el usuario navega a ellos
+const DashboardSummary = lazy(() => import('../DashboardSummary'))
+const SensorsDashboard = lazy(() => import('../SensorsDashboard'))
+const RulesManager = lazy(() => import('../RulesManager'))
+const ConfigurationContent = lazy(() => import('./ConfigurationContent'))
+
+// Fallback de carga para tabs lazy
+function TabLoadingFallback() {
+    return (
+        <div className="flex items-center justify-center h-64">
+            <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span>Cargando...</span>
+            </div>
+        </div>
+    )
+}
 
 /**
  * AppContent - Main application content with all views
@@ -82,23 +96,25 @@ export default function AppContent() {
             <div className={`flex-1 ${activeTab === 'cameras' ? 'flex overflow-hidden' : 'overflow-y-auto'}`}>
                 {/* Dashboard */}
                 <div className={activeTab === 'dashboard' ? 'block animate-fade-in' : 'hidden'}>
-                    <div className="max-w-7xl mx-auto p-6 space-y-6">
-                        <DashboardSummary />
+                    <Suspense fallback={<TabLoadingFallback />}>
+                        <div className="max-w-7xl mx-auto p-6 space-y-6">
+                            <DashboardSummary />
 
-                        {/* Technical Sensors Dashboard */}
-                        <div className="mt-8">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                                    <Radio className="w-4 h-4 text-white" />
+                            {/* Technical Sensors Dashboard */}
+                            <div className="mt-8">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                                        <Radio className="w-4 h-4 text-white" />
+                                    </div>
+                                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Dashboard Técnico</h2>
+                                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                                        Métricas avanzadas y configuración de sensores
+                                    </span>
                                 </div>
-                                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Dashboard Técnico</h2>
-                                <span className="text-sm text-gray-500 dark:text-gray-400">
-                                    Métricas avanzadas y configuración de sensores
-                                </span>
+                                <SensorsDashboard />
                             </div>
-                            <SensorsDashboard />
                         </div>
-                    </div>
+                    </Suspense>
                 </div>
 
                 {/* Cameras */}
@@ -174,19 +190,23 @@ export default function AppContent() {
 
                 {/* Rules */}
                 {activeTab === 'rules' && (
-                    <div className="max-w-7xl mx-auto p-6 animate-fade-in">
-                        <RulesManager />
-                    </div>
+                    <Suspense fallback={<TabLoadingFallback />}>
+                        <div className="max-w-7xl mx-auto p-6 animate-fade-in">
+                            <RulesManager />
+                        </div>
+                    </Suspense>
                 )}
 
                 {/* Configuration */}
                 {activeTab === 'config' && (
-                    <div className="animate-fade-in">
-                        <ConfigurationContent
-                            configSubTab={configSubTab}
-                            setConfigSubTab={setConfigSubTab}
-                        />
-                    </div>
+                    <Suspense fallback={<TabLoadingFallback />}>
+                        <div className="animate-fade-in">
+                            <ConfigurationContent
+                                configSubTab={configSubTab}
+                                setConfigSubTab={setConfigSubTab}
+                            />
+                        </div>
+                    </Suspense>
                 )}
             </div>
 
