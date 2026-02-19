@@ -290,6 +290,7 @@ const DashboardSummary = () => {
   }, [selectedCameraId])
 
   // Load sync status
+  // Load sync status — diferido 3s para no bloquear carga inicial
   useEffect(() => {
     const fetchSyncStatus = async () => {
       try {
@@ -305,12 +306,14 @@ const DashboardSummary = () => {
       } catch { }
     }
 
-    fetchSyncStatus()
+    const initialDelay = setTimeout(() => {
+      fetchSyncStatus()
+    }, 3000)
     const interval = setInterval(fetchSyncStatus, 10000)
-    return () => clearInterval(interval)
+    return () => { clearTimeout(initialDelay); clearInterval(interval) }
   }, [])
 
-  // Load local disk info
+  // Load local disk info — diferido 3s
   useEffect(() => {
     const fetchDiskInfo = async () => {
       try {
@@ -323,12 +326,14 @@ const DashboardSummary = () => {
       }
     }
 
-    fetchDiskInfo()
+    const initialDelay = setTimeout(() => {
+      fetchDiskInfo()
+    }, 3000)
     const interval = setInterval(fetchDiskInfo, 30000)
-    return () => clearInterval(interval)
+    return () => { clearTimeout(initialDelay); clearInterval(interval) }
   }, [])
 
-  // Load remote disk info
+  // Load remote disk info — diferido 3s
   useEffect(() => {
     const fetchRemoteDiskInfo = async () => {
       try {
@@ -346,9 +351,11 @@ const DashboardSummary = () => {
       }
     }
 
-    fetchRemoteDiskInfo()
+    const initialDelay = setTimeout(() => {
+      fetchRemoteDiskInfo()
+    }, 3000)
     const interval = setInterval(fetchRemoteDiskInfo, 30000)
-    return () => clearInterval(interval)
+    return () => { clearTimeout(initialDelay); clearInterval(interval) }
   }, [])
 
   // Update stats

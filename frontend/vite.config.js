@@ -8,6 +8,22 @@ export default defineConfig({
     // Ignorar archivos que no deben ser parseados por React
     exclude: ['**/*.test.jsx', '**/*.spec.jsx']
   })],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core (~140KB) — cacheable, raramente cambia
+          'vendor-react': ['react', 'react-dom'],
+          // MQTT + Zustand (~80KB) — core de la app
+          'vendor-mqtt': ['mqtt', 'zustand'],
+          // Iconos + UI (~50KB)
+          'vendor-ui': ['lucide-react', 'react-hot-toast'],
+          // Streaming (~200KB) — solo se necesita en tab "cameras"
+          'vendor-streaming': ['hls.js'],
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     proxy: {
