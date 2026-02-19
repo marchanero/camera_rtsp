@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { useMQTT } from '../contexts/MQTTContext'
-import { 
-  Settings, 
-  Plus, 
-  Edit3, 
-  Trash2, 
-  Play, 
-  Pause, 
+import { useMQTTStore } from '../stores/useMQTTStore'
+import {
+  Settings,
+  Plus,
+  Edit3,
+  Trash2,
+  Play,
+  Pause,
   X,
   Loader2,
   AlertCircle,
@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 function RulesManager() {
-  const { isConnected } = useMQTT()
+  const isConnected = useMQTTStore(s => s.isConnected)
   const [rules, setRules] = useState([])
   const [sensors, setSensors] = useState([])
   const [cameras, setCameras] = useState([])
@@ -89,10 +89,10 @@ function RulesManager() {
         priority: parseInt(formData.priority)
       }
 
-      const url = editingRule 
+      const url = editingRule
         ? `/api/mqtt/rules/${editingRule.id}`
         : '/api/mqtt/rules'
-      
+
       const method = editingRule ? 'PUT' : 'POST'
 
       const response = await fetch(url, {
@@ -268,17 +268,16 @@ function RulesManager() {
               >
                 {/* Status Bar */}
                 <div className={`h-1 ${rule.isActive ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                
+
                 <div className="p-6">
                   <div className="flex flex-col lg:flex-row justify-between gap-4">
                     <div className="flex-1">
                       {/* Header */}
                       <div className="flex items-center gap-3 mb-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          rule.isActive 
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30' 
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${rule.isActive
+                            ? 'bg-emerald-100 dark:bg-emerald-900/30'
                             : 'bg-gray-100 dark:bg-gray-700'
-                        }`}>
+                          }`}>
                           <Zap className={`w-5 h-5 ${rule.isActive ? 'text-emerald-500' : 'text-gray-400'}`} />
                         </div>
                         <div>
@@ -292,11 +291,10 @@ function RulesManager() {
                           )}
                         </div>
                         <div className="flex items-center gap-2 ml-auto">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
-                            rule.isActive
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${rule.isActive
                               ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
                               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400'
-                          }`}>
+                            }`}>
                             {rule.isActive ? <CheckCircle className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
                             {rule.isActive ? 'Activa' : 'Inactiva'}
                           </span>
@@ -316,9 +314,9 @@ function RulesManager() {
                             {rule.sensor?.name || 'N/A'}
                           </span>
                         </div>
-                        
+
                         <ArrowRight className="w-4 h-4 text-gray-400" />
-                        
+
                         {/* Condition */}
                         <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
                           <Target className="w-4 h-4 text-amber-500" />
@@ -326,9 +324,9 @@ function RulesManager() {
                             {condition.field} {condition.operator} {condition.value}
                           </span>
                         </div>
-                        
+
                         <ArrowRight className="w-4 h-4 text-gray-400" />
-                        
+
                         {/* Action */}
                         <div className="flex items-center gap-2 px-4 py-2 bg-cyan-50 dark:bg-cyan-900/20 rounded-xl border border-cyan-200 dark:border-cyan-800">
                           <Video className="w-4 h-4 text-cyan-500" />
@@ -355,11 +353,10 @@ function RulesManager() {
                     <div className="flex lg:flex-col gap-2">
                       <button
                         onClick={() => toggleActive(rule)}
-                        className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-                          rule.isActive
+                        className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${rule.isActive
                             ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-200'
                             : 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200'
-                        }`}
+                          }`}
                         title={rule.isActive ? 'Desactivar' : 'Activar'}
                       >
                         {rule.isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -420,7 +417,7 @@ function RulesManager() {
                     type="text"
                     required
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Ej: Alerta temperatura alta"
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
                   />
@@ -432,7 +429,7 @@ function RulesManager() {
                   </label>
                   <textarea
                     value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     placeholder="Descripción opcional de la regla..."
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none"
                     rows="2"
@@ -450,7 +447,7 @@ function RulesManager() {
                   <select
                     required
                     value={formData.sensorId}
-                    onChange={(e) => setFormData({...formData, sensorId: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, sensorId: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
                   >
                     <option value="">Seleccionar sensor...</option>
@@ -472,7 +469,7 @@ function RulesManager() {
                     min="1"
                     max="100"
                     value={formData.priority}
-                    onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
                   />
                 </div>
@@ -492,7 +489,7 @@ function RulesManager() {
                     <input
                       type="text"
                       value={formData.field}
-                      onChange={(e) => setFormData({...formData, field: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, field: e.target.value })}
                       placeholder="value"
                       className="w-full px-3 py-2.5 border border-amber-300 dark:border-amber-700 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
                     />
@@ -503,7 +500,7 @@ function RulesManager() {
                     </label>
                     <select
                       value={formData.operator}
-                      onChange={(e) => setFormData({...formData, operator: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, operator: e.target.value })}
                       className="w-full px-3 py-2.5 border border-amber-300 dark:border-amber-700 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
                     >
                       <option value=">">{'>'} Mayor</option>
@@ -523,7 +520,7 @@ function RulesManager() {
                       step="any"
                       required
                       value={formData.value}
-                      onChange={(e) => setFormData({...formData, value: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, value: e.target.value })}
                       placeholder="0"
                       className="w-full px-3 py-2.5 border border-amber-300 dark:border-amber-700 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
                     />
@@ -545,24 +542,22 @@ function RulesManager() {
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={() => setFormData({...formData, actionType: 'start_recording'})}
-                        className={`px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${
-                          formData.actionType === 'start_recording'
+                        onClick={() => setFormData({ ...formData, actionType: 'start_recording' })}
+                        className={`px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${formData.actionType === 'start_recording'
                             ? 'border-cyan-500 bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300'
                             : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-cyan-300'
-                        }`}
+                          }`}
                       >
                         <Play className="w-4 h-4" />
                         Iniciar Grabación
                       </button>
                       <button
                         type="button"
-                        onClick={() => setFormData({...formData, actionType: 'stop_recording'})}
-                        className={`px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${
-                          formData.actionType === 'stop_recording'
+                        onClick={() => setFormData({ ...formData, actionType: 'stop_recording' })}
+                        className={`px-4 py-3 rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${formData.actionType === 'stop_recording'
                             ? 'border-cyan-500 bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300'
                             : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-cyan-300'
-                        }`}
+                          }`}
                       >
                         <Pause className="w-4 h-4" />
                         Detener Grabación
@@ -579,7 +574,7 @@ function RulesManager() {
                       required
                       value={formData.cameras}
                       onChange={(e) => setFormData({
-                        ...formData, 
+                        ...formData,
                         cameras: Array.from(e.target.selectedOptions, option => option.value)
                       })}
                       className="w-full px-3 py-2.5 border border-cyan-300 dark:border-cyan-700 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm"
@@ -606,7 +601,7 @@ function RulesManager() {
                       type="number"
                       min="1"
                       value={formData.duration}
-                      onChange={(e) => setFormData({...formData, duration: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                       placeholder="60"
                       className="w-full px-3 py-2.5 border border-cyan-300 dark:border-cyan-700 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm"
                     />
