@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useEffect } from 'react'
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react'
 
 const MQTTMessagesContext = createContext()
 
@@ -21,6 +21,10 @@ export function MQTTMessagesProvider({ children, mqttClient }) {
     const messageHandlersRef = useRef(new Map())
     const messageCountRef = useRef(0)
     const lastRateUpdateRef = useRef(Date.now())
+
+    // Buffer para batching: acumular mensajes y volcar al estado cada 250ms
+    const pendingMessagesRef = useRef([])
+    const pendingCountRef = useRef(0)
 
     /**
      * Subscribe to MQTT topics
@@ -101,9 +105,9 @@ export function MQTTMessagesProvider({ children, mqttClient }) {
             try {
                 const payload = message.toString()
 
-                // Update message count for rate calculation
+                // Update message count for rate calculation (sin setState para no re-renderizar)
                 messageCountRef.current++
-                setTotalMessages(prev => prev + 1)
+                pendingCountRef.current++
 
                 // Create message object
                 const msg = {
@@ -113,11 +117,10 @@ export function MQTTMessagesProvider({ children, mqttClient }) {
                     id: `${topic}-${Date.now()}`
                 }
 
-                // Store message (keep last 100)
-                setMessages(prev => [...prev.slice(-99), msg])
-                setLastMessage(msg)
+                // Acumular en buffer en lugar de llamar setState directamente
+                pendingMessagesRef.current.push(msg)
 
-                // Call custom handlers
+                // Llamar handlers síncronamente (no bloquean UI)
                 messageHandlersRef.current.forEach(handler => {
                     try {
                         handler(topic, payload, msg)
@@ -137,6 +140,30 @@ export function MQTTMessagesProvider({ children, mqttClient }) {
             mqttClient.off('message', handleMessage)
         }
     }, [mqttClient])
+
+    /**
+     * Flush buffer al estado React cada 250ms
+     * Reduce re-renders de decenas/segundo a 4/segundo
+     */
+    useEffect(() => {
+        const flushInterval = setInterval(() => {
+            const pending = pendingMessagesRef.current
+            const count = pendingCountRef.current
+
+            if (pending.length === 0) return
+
+            // Vaciar buffer
+            pendingMessagesRef.current = []
+            pendingCountRef.current = 0
+
+            // Un único setState batch para los tres valores
+            setMessages(prev => [...prev, ...pending].slice(-100))
+            setLastMessage(pending[pending.length - 1])
+            setTotalMessages(prev => prev + count)
+        }, 250)
+
+        return () => clearInterval(flushInterval)
+    }, [])
 
     /**
      * Calculate message rate every second

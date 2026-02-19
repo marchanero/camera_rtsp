@@ -82,13 +82,30 @@ export function MQTTSensorDataProvider({ children, mqttMessages, reloadTopics })
                         // Store the entire payload under the variable name
                         // This handles EmotiBit format where each topic has variable-sized objects
                         if (variableName && variableName !== sensorId) {
-                            // Store the whole data object under the variable name
+                            // For EmotiBit /data topic: deep merge sensor values to preserve
+                            // slow-updating sensors like temperature (7.5Hz) between fast messages
+                            const existingPayload = existingData.values?.[variableName] || {}
+                            const mergedPayload = {
+                                ...existingPayload,  // Keep previous sensor values
+                                ...data              // Overlay new data
+                            }
+
+                            // Deep merge individual sensor objects (ppg, eda, temp, acc, etc.)
+                            // This preserves temp/hr values when a message doesn't include them
+                            const sensorKeys = ['ppg', 'eda', 'temp', 'acc', 'gyr', 'mag', 'hr']
+                            for (const key of sensorKeys) {
+                                if (existingPayload[key] && !data[key]) {
+                                    // Preserve previous value if new data doesn't have this sensor
+                                    mergedPayload[key] = existingPayload[key]
+                                }
+                            }
+
                             mergedData.values = {
                                 ...(existingData.values || {}),
-                                [variableName]: data
+                                [variableName]: mergedPayload
                             }
                             // Also store at root level for easy access
-                            mergedData[variableName] = data
+                            mergedData[variableName] = mergedPayload
                         } else {
                             // For non-variable topics, merge data directly
                             Object.assign(mergedData, data)
