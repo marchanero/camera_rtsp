@@ -78,7 +78,7 @@ export default function ConfigurationContent({ configSubTab, setConfigSubTab }) 
 
             {/* Tab bar */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 mb-6 overflow-hidden">
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+                <div className="grid grid-cols-4 lg:grid-cols-8">
                     {CONFIG_TABS.map(tab => {
                         const Icon = tab.icon
                         const isActive = configSubTab === tab.id
@@ -86,12 +86,13 @@ export default function ConfigurationContent({ configSubTab, setConfigSubTab }) 
                             <button
                                 key={tab.id}
                                 onClick={() => setConfigSubTab(tab.id)}
-                                className={`px-3 py-3 font-medium transition-all duration-200 text-sm ${isActive ? ACTIVE_COLORS[tab.color] : INACTIVE_CLASSES
+                                className={`px-2 sm:px-3 py-3 font-medium transition-all duration-200 text-xs sm:text-sm ${isActive ? ACTIVE_COLORS[tab.color] : INACTIVE_CLASSES
                                     }`}
+                                title={tab.label}
                             >
-                                <div className="flex items-center justify-center gap-1.5">
-                                    <Icon className={`w-4 h-4 ${isActive ? '' : 'opacity-70'}`} />
-                                    <span className="truncate">{tab.label}</span>
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5">
+                                    <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? '' : 'opacity-70'}`} />
+                                    <span className="truncate text-[10px] sm:text-xs lg:text-sm leading-tight">{tab.label}</span>
                                 </div>
                             </button>
                         )

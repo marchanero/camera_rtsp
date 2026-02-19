@@ -1,5 +1,5 @@
-import { useEffect, lazy, Suspense } from 'react'
-import { Video, Plus, RefreshCw, Radio, Loader2 } from 'lucide-react'
+import { useEffect, useState, lazy, Suspense } from 'react'
+import { Video, Plus, RefreshCw, Radio, Loader2, ArrowLeft } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useRecording } from '../../contexts/RecordingContext'
 import { useScenario } from '../../contexts/ScenarioContext'
@@ -42,6 +42,8 @@ export default function AppContent() {
     const { theme, toggleTheme } = useTheme()
     const { activeRecordingsCount, startRecording, stopRecording } = useRecording()
     const { activeScenario } = useScenario()
+    // Mobile: track whether to show list or viewer (only used on <md)
+    const [mobileShowViewer, setMobileShowViewer] = useState(false)
 
     const {
         cameras,
@@ -80,7 +82,10 @@ export default function AppContent() {
         window.addEventListener('beforeunload', handleBeforeUnload)
         return () => window.removeEventListener('beforeunload', handleBeforeUnload)
     }, [activeRecordingsCount])
-
+    const handleSelectCamera = (camera) => {
+        setSelectedCamera(camera)
+        setMobileShowViewer(true) // auto-navigate to viewer on mobile
+    }
     return (
         <div className="app min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300 flex flex-col">
             <AppHeader
@@ -118,8 +123,12 @@ export default function AppContent() {
                 </div>
 
                 {/* Cameras */}
-                <div className={activeTab === 'cameras' ? 'flex flex-1 gap-4 p-4 overflow-hidden min-h-0' : 'hidden'}>
-                    <aside className="card w-80 flex flex-col flex-shrink-0 min-h-0">
+                <div className={activeTab === 'cameras' ? 'flex flex-col md:flex-row flex-1 gap-4 p-3 sm:p-4 overflow-hidden min-h-0' : 'hidden'}>
+
+                    {/* Sidebar list — hidden on mobile when viewer is active */}
+                    <aside className={`card flex flex-col flex-shrink-0 min-h-0
+                        md:w-64 lg:w-80
+                        ${mobileShowViewer ? 'hidden md:flex' : 'flex w-full md:w-64 lg:w-80'}`}>
                         <div className="flex justify-between items-center mb-4 flex-shrink-0">
                             <div className="flex items-center gap-2">
                                 <Video className="w-5 h-5 text-blue-500" />
@@ -151,7 +160,7 @@ export default function AppContent() {
                                 <CameraList
                                     cameras={cameras}
                                     selectedCamera={selectedCamera}
-                                    onSelectCamera={setSelectedCamera}
+                                    onSelectCamera={handleSelectCamera}
                                     onDeleteCamera={handleDeleteCamera}
                                 />
                             )}
@@ -167,7 +176,22 @@ export default function AppContent() {
                         </button>
                     </aside>
 
-                    <main className="card flex-1 flex flex-col overflow-hidden min-h-0">
+                    {/* Main viewer — full width on mobile when camera selected */}
+                    <main className={`card flex-1 flex flex-col overflow-hidden min-h-0
+                        ${!mobileShowViewer && selectedCamera ? 'hidden md:flex' : ''}
+                        ${mobileShowViewer || !selectedCamera ? 'flex' : 'hidden md:flex'}`}>
+
+                        {/* Mobile back button */}
+                        {mobileShowViewer && selectedCamera && (
+                            <button
+                                onClick={() => setMobileShowViewer(false)}
+                                className="md:hidden flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 border-b border-gray-100 dark:border-gray-800 transition-colors"
+                            >
+                                <ArrowLeft className="w-4 h-4" />
+                                Volver a cámaras
+                            </button>
+                        )}
+
                         {selectedCamera ? (
                             <div className="flex-1 overflow-hidden min-h-0 flex flex-col animate-fade-in">
                                 <WebRTCViewer camera={selectedCamera} />

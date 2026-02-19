@@ -80,6 +80,7 @@ const DashboardSummary = () => {
   const mqttError = useMQTTStore(s => s.error)
 
   const {
+    scenarios,
     activeScenario,
     setActiveScenario,
     getActiveSensors
@@ -474,6 +475,7 @@ const DashboardSummary = () => {
     <div className="space-y-4">
       {/* Status Bar */}
       <StatusBar
+        scenarios={scenarios}
         activeScenario={activeScenario}
         onScenarioChange={setActiveScenario}
         recordingState={recordingState}
